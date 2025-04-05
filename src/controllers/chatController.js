@@ -22,11 +22,17 @@ exports.chat = async (req, res) => {
 Generate a SQL query based on the following question for our learning platform database schema:
 ${question_text}
 
-The schema has these tables:
-User, Course, Module, Quiz, Question, Enrollment, Attempt
+Generate an SQL query that uses the table names exactly as given in the schema below.The schema has these tables:
+- Table: User ,
+- Table: Course ,
+- Table: Module ,
+- Table: Quiz,
+- Table: Question,
+- Table: Enrollment,
+- Table: Attempt
 Each with relevant columns. Return only the SQL query (no explanation).
     `;
-
+    console.log(prompt,"Generated Query")
     // Call OpenAI
     const completion = await openai.createChatCompletion({
       model: 'gpt-3.5-turbo',

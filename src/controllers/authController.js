@@ -3,6 +3,7 @@ const { User } = require('../models');
 
 exports.login = async (req, res) => {
   try {
+    console.log("inside controller")
     const { username, password } = req.query;
     const user = await User.findOne({ where: { username, password } });
     if (user) {
