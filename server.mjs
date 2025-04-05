@@ -1,74 +1,81 @@
 // server.js - Consolidated Node.js backend for SQL learning platform
 
+// Load environment variables from .env file
+import dotenv from 'dotenv';
+dotenv.config();
+
 // Import required packages
-const express = require('express');
-const bodyParser = require('body-parser');  // optional if using express.json
-const { Sequelize, DataTypes, QueryTypes } = require('sequelize');
-const { Configuration, OpenAIApi } = require('openai');
-require('dotenv').config();
+import express from 'express';
+import { Sequelize, DataTypes, QueryTypes } from 'sequelize';
+import OpenAI from 'openai';
+
+// Initialize the OpenAI client using the API key from the environment
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
 
 // Initialize Express app
 const app = express();
 app.use(express.json());  // for parsing JSON request bodies
 
-// Initialize Sequelize with SQLite database
+// Initialize Sequelize with SQLite database (update this config for MySQL if needed)
 const sequelize = new Sequelize({
   dialect: 'sqlite',
-  storage: 'database.sqlite',  // database file
-  logging: false               // disable logging SQL queries (optional)
+  storage: 'database.sqlite',  // SQLite file; update as necessary for other DBs
+  logging: false,                // disable logging SQL queries (optional)
 });
 
-// Define Sequelize models and their fields
+// Define Sequelize models
+
 const User = sequelize.define('User', {
   username:    { type: DataTypes.STRING, allowNull: false, unique: true },
-  password:    { type: DataTypes.STRING, allowNull: false },  // store hashed in real app
+  password:    { type: DataTypes.STRING, allowNull: false },
   role:        { type: DataTypes.ENUM('instructor', 'student'), allowNull: false },
-  institution: { type: DataTypes.STRING },   // for instructors: institution name
-  certification:{type: DataTypes.STRING },   // for instructors: certification
-  yoe:         { type: DataTypes.INTEGER }   // for instructors: years of experience
+  institution: { type: DataTypes.STRING },
+  certification:{ type: DataTypes.STRING },
+  yoe:         { type: DataTypes.INTEGER }  // years of experience for instructors
 });
 
 const Course = sequelize.define('Course', {
-  name:        { type: DataTypes.STRING, allowNull: false },
-  description: { type: DataTypes.TEXT },
-  instructorId:{ type: DataTypes.INTEGER, allowNull: false }  // foreign key to User (instructor)
+  name:         { type: DataTypes.STRING, allowNull: false },
+  description:  { type: DataTypes.TEXT },
+  instructorId: { type: DataTypes.INTEGER, allowNull: false }  // foreign key to User (instructor)
 });
 
 const Module = sequelize.define('Module', {
-  title:       { type: DataTypes.STRING, allowNull: false },
-  content:     { type: DataTypes.TEXT },
-  courseId:    { type: DataTypes.INTEGER, allowNull: false }  // foreign key to Course
+  title:    { type: DataTypes.STRING, allowNull: false },
+  content:  { type: DataTypes.TEXT },
+  courseId: { type: DataTypes.INTEGER, allowNull: false }  // foreign key to Course
 });
 
 const Quiz = sequelize.define('Quiz', {
-  name:        { type: DataTypes.STRING, allowNull: false },
-  difficulty:  { type: DataTypes.INTEGER },  // 1-5 difficulty level
-  moduleId:    { type: DataTypes.INTEGER, allowNull: false }  // foreign key to Module
+  name:       { type: DataTypes.STRING, allowNull: false },
+  difficulty: { type: DataTypes.INTEGER },  // 1-5 difficulty level
+  moduleId:   { type: DataTypes.INTEGER, allowNull: false }  // foreign key to Module
 });
 
 const Question = sequelize.define('Question', {
-  text:         { type: DataTypes.TEXT, allowNull: false },
-  correctAnswer:{ type: DataTypes.TEXT, allowNull: false },
-  quizId:       { type: DataTypes.INTEGER, allowNull: false }  // foreign key to Quiz
+  text:          { type: DataTypes.TEXT, allowNull: false },
+  correctAnswer: { type: DataTypes.TEXT, allowNull: false },
+  quizId:        { type: DataTypes.INTEGER, allowNull: false }  // foreign key to Quiz
 });
 
 const Enrollment = sequelize.define('Enrollment', {
-  // This model links Users (students) to Courses
   userId:   { type: DataTypes.INTEGER, allowNull: false },
   courseId: { type: DataTypes.INTEGER, allowNull: false }
 }, {
-  indexes: [{ unique: true, fields: ['userId', 'courseId'] }]  // prevent duplicate enrollment
+  indexes: [{ unique: true, fields: ['userId', 'courseId'] }]
 });
 
 const Attempt = sequelize.define('Attempt', {
-  // This model records quiz attempts (answers to questions by students)
-  answer:     { type: DataTypes.TEXT },      // answer given by student
-  correct:    { type: DataTypes.BOOLEAN },   // whether the answer was correct
+  answer:     { type: DataTypes.TEXT },
+  correct:    { type: DataTypes.BOOLEAN },
   userId:     { type: DataTypes.INTEGER, allowNull: false },
   questionId: { type: DataTypes.INTEGER, allowNull: false }
 });
 
-// Define model relationships (associations)
+// Define model relationships
+
 // User (Instructor) <-> Course
 User.hasMany(Course, { as: 'Courses', foreignKey: 'instructorId' });
 Course.belongsTo(User, { as: 'Instructor', foreignKey: 'instructorId' });
@@ -88,31 +95,23 @@ Question.belongsTo(Quiz, { foreignKey: 'quizId' });
 // User (Student) <-> Course through Enrollment
 User.hasMany(Enrollment, { foreignKey: 'userId' });
 Course.hasMany(Enrollment, { foreignKey: 'courseId' });
-Enrollment.belongsTo(User,   { foreignKey: 'userId' });
+Enrollment.belongsTo(User, { foreignKey: 'userId' });
 Enrollment.belongsTo(Course, { foreignKey: 'courseId' });
 
 // User (Student) <-> Question through Attempt
 User.hasMany(Attempt, { foreignKey: 'userId' });
 Question.hasMany(Attempt, { foreignKey: 'questionId' });
-Attempt.belongsTo(User,    { foreignKey: 'userId' });
-Attempt.belongsTo(Question,{ foreignKey: 'questionId' });
+Attempt.belongsTo(User, { foreignKey: 'userId' });
+Attempt.belongsTo(Question, { foreignKey: 'questionId' });
 
 // Sync all models with the database (create tables if not exist)
-sequelize.sync().then(() => {
-  console.log("Database synced");
-}).catch(err => {
-  console.error("Database sync error:", err);
-});
+sequelize.sync()
+  .then(() => console.log("Database synced"))
+  .catch(err => console.error("Database sync error:", err));
 
-// Configure OpenAI API (ChatGPT integration)
-const openaiConfig = new Configuration({
-  apiKey: process.env.OPENAI_API_KEY  // ensure to set your OpenAI API key in environment
-});
-const openai = new OpenAIApi(openaiConfig);
+// ----------------- ROUTES -----------------
 
-// Routes
-
-// ** Authentication Routes **
+// Authentication Routes
 
 // Login route: verify username and password
 app.post('/login', async (req, res) => {
@@ -122,7 +121,6 @@ app.post('/login', async (req, res) => {
     if (!user) {
       return res.json({ success: false, message: "Invalid username or password" });
     }
-    // Login successful
     return res.json({ success: true, userId: user.id, role: user.role });
   } catch (error) {
     console.error("Login error:", error);
@@ -132,7 +130,7 @@ app.post('/login', async (req, res) => {
 
 // Signup route: create a new user (instructor or student)
 app.post('/signup', async (req, res) => {
-  const { username, password, identity } = req.body;  // identity is 'instructor' or 'student'
+  const { username, password, identity } = req.body;  // identity must be 'instructor' or 'student'
   try {
     if (!username || !password || !identity) {
       return res.status(400).json({ success: false, message: "Missing required fields" });
@@ -140,12 +138,10 @@ app.post('/signup', async (req, res) => {
     if (!['instructor', 'student'].includes(identity)) {
       return res.status(400).json({ success: false, message: "Identity must be 'instructor' or 'student'" });
     }
-    // Check if username already exists
     const existing = await User.findOne({ where: { username } });
     if (existing) {
       return res.json({ success: false, message: "Username already taken" });
     }
-    // Create new user
     const newUser = await User.create({ username, password, role: identity });
     return res.json({ success: true, userId: newUser.id, role: newUser.role });
   } catch (error) {
@@ -154,14 +150,14 @@ app.post('/signup', async (req, res) => {
   }
 });
 
-// ** Instructor Routes ** (for instructor functionalities)
+// Instructor Routes
 
 // Get all courses for an instructor
 app.get('/instructor/courses', async (req, res) => {
   const { instructorId } = req.query;
   try {
     const courses = await Course.findAll({ where: { instructorId } });
-    return res.json(courses);  // return list of courses (empty list if none)
+    return res.json(courses);
   } catch (error) {
     console.error("Fetch courses error:", error);
     return res.status(500).json({ success: false, message: "Failed to retrieve courses" });
@@ -175,12 +171,10 @@ app.post('/instructor/courses', async (req, res) => {
     if (!name || !instructorId) {
       return res.status(400).json({ success: false, message: "Course name and instructorId are required" });
     }
-    // Optionally, verify that instructorId corresponds to an instructor user
     const instructor = await User.findByPk(instructorId);
     if (!instructor || instructor.role !== 'instructor') {
       return res.status(400).json({ success: false, message: "Invalid instructorId" });
     }
-    // Create course
     await Course.create({ name, description: description || '', instructorId });
     return res.json({ success: true });
   } catch (error) {
@@ -208,7 +202,6 @@ app.post('/instructor/modules', async (req, res) => {
     if (!title || !courseId) {
       return res.status(400).json({ success: false, message: "Module title and courseId are required" });
     }
-    // Ensure course exists (and perhaps instructor owns it, but skip owner check here)
     const course = await Course.findByPk(courseId);
     if (!course) {
       return res.status(400).json({ success: false, message: "Course not found" });
@@ -226,13 +219,10 @@ app.put('/instructor/modules/:moduleId', async (req, res) => {
   const { moduleId } = req.params;
   const { title, content, courseId } = req.body;
   try {
-    // Find the module
     const module = await Module.findByPk(moduleId);
     if (!module) {
       return res.status(404).json({ success: false, message: "Module not found" });
     }
-    // (Optional: verify the instructor owns the course of this module)
-    // Update fields if provided
     if (title !== undefined) module.title = title;
     if (content !== undefined) module.content = content;
     if (courseId !== undefined) module.courseId = courseId;
@@ -263,14 +253,11 @@ app.post('/instructor/quizzes', async (req, res) => {
     if (!name || !moduleId || !questions) {
       return res.status(400).json({ success: false, message: "Quiz name, moduleId and questions are required" });
     }
-    // Ensure module exists
     const module = await Module.findByPk(moduleId);
     if (!module) {
       return res.status(400).json({ success: false, message: "Module not found" });
     }
-    // Create quiz
     const quiz = await Quiz.create({ name, difficulty: difficulty || 1, moduleId });
-    // Create questions (assuming questions is an array of {text, correctAnswer})
     for (let q of questions) {
       if (q.text && q.correctAnswer) {
         await Question.create({ text: q.text, correctAnswer: q.correctAnswer, quizId: quiz.id });
@@ -287,18 +274,15 @@ app.post('/instructor/quizzes', async (req, res) => {
 app.get('/instructor/students', async (req, res) => {
   const { courseId } = req.query;
   try {
-    // Find all enrollments for the course and include the User (student) details
     const enrollments = await Enrollment.findAll({
       where: { courseId },
       include: [{ model: User, attributes: ['id', 'username', 'role', 'institution', 'certification', 'yoe'] }]
     });
-    // Map to just student info (filter only students)
     const students = enrollments
       .filter(enr => enr.User && enr.User.role === 'student')
       .map(enr => ({
         id: enr.User.id,
-        username: enr.User.username,
-        // (In case any instructor accidentally enrolled, we filtered above)
+        username: enr.User.username
       }));
     return res.json(students);
   } catch (error) {
@@ -311,7 +295,6 @@ app.get('/instructor/students', async (req, res) => {
 app.get('/instructor/progress', async (req, res) => {
   const { courseId } = req.query;
   try {
-    // Find all attempts where the question belongs to quizzes of modules of this course
     const attempts = await Attempt.findAll({
       include: [
         { 
@@ -323,16 +306,15 @@ app.get('/instructor/progress', async (req, res) => {
               attributes: ['id', 'name'], 
               include: [
                 { model: Module, attributes: ['id'], where: { courseId } }
-              ] 
+              ]
             }
-          ] 
+          ]
         },
         { model: User, attributes: ['id', 'username'] }
       ]
     });
-    // Filter out attempts that didn't match (if any) and format the output
     const progressList = attempts
-      .filter(att => att.Question && att.Question.Quiz && att.Question.Quiz.Module)  // ensure the attempt is for the specified course
+      .filter(att => att.Question && att.Question.Quiz && att.Question.Quiz.Module)
       .map(att => ({
         studentId: att.User.id,
         studentUsername: att.User.username,
@@ -350,7 +332,7 @@ app.get('/instructor/progress', async (req, res) => {
   }
 });
 
-// ** Student Routes ** (for student functionalities)
+// Student Routes
 
 // Get all courses (for students to view/enroll)
 app.get('/student/courses', async (req, res) => {
@@ -370,22 +352,18 @@ app.post('/student/enroll', async (req, res) => {
     if (!studentId || !courseId) {
       return res.status(400).json({ success: false, message: "studentId and courseId are required" });
     }
-    // Optionally verify the user is a student
     const student = await User.findByPk(studentId);
     if (!student || student.role !== 'student') {
       return res.status(400).json({ success: false, message: "Invalid studentId" });
     }
-    // Check if already enrolled
     const existingEnroll = await Enrollment.findOne({ where: { userId: studentId, courseId } });
     if (existingEnroll) {
       return res.json({ success: false, message: "Student already enrolled in this course" });
     }
-    // Check course exists
     const course = await Course.findByPk(courseId);
     if (!course) {
       return res.status(400).json({ success: false, message: "Course not found" });
     }
-    // Create enrollment
     await Enrollment.create({ userId: studentId, courseId });
     return res.json({ success: true });
   } catch (error) {
@@ -394,7 +372,7 @@ app.post('/student/enroll', async (req, res) => {
   }
 });
 
-// Get all modules of a course (student view) – same as instructor route
+// Get all modules of a course (student view)
 app.get('/student/modules', async (req, res) => {
   const { courseId } = req.query;
   try {
@@ -418,28 +396,23 @@ app.get('/student/quizzes', async (req, res) => {
   }
 });
 
-// Attempt a quiz (submit answers to quiz questions)
+// Attempt a quiz (submit answers)
 app.post('/student/attempt', async (req, res) => {
-  // Expecting req.body to contain: studentId, answers (array of { questionId, answer })
   const { studentId, answers } = req.body;
   try {
     if (!studentId || !answers) {
       return res.status(400).json({ success: false, message: "studentId and answers are required" });
     }
-    // Optionally verify student exists and role
     const student = await User.findByPk(studentId);
     if (!student || student.role !== 'student') {
       return res.status(400).json({ success: false, message: "Invalid studentId" });
     }
-    // Iterate over answers array and record each attempt
     for (let ans of answers) {
       const { questionId, answer } = ans;
       if (!questionId) continue;
-      // Find question to check correctness
       const question = await Question.findByPk(questionId);
-      if (!question) continue;  // skip if question not found (shouldn't happen normally)
+      if (!question) continue;
       const isCorrect = question.correctAnswer === answer;
-      // Record attempt
       await Attempt.create({ userId: studentId, questionId, answer, correct: isCorrect });
     }
     return res.json({ success: true });
@@ -449,7 +422,7 @@ app.post('/student/attempt', async (req, res) => {
   }
 });
 
-// ** Profile Route (Instructor) **
+// Instructor Profile Route
 
 // Update instructor profile (institution, certification, yoe)
 app.put('/instructor/profile', async (req, res) => {
@@ -462,7 +435,6 @@ app.put('/instructor/profile', async (req, res) => {
     if (!instructor || instructor.role !== 'instructor') {
       return res.status(404).json({ success: false, message: "Instructor not found" });
     }
-    // Update only the provided fields
     if (institution !== undefined) instructor.institution = institution;
     if (certification !== undefined) instructor.certification = certification;
     if (yoe !== undefined) instructor.yoe = yoe;
@@ -474,39 +446,35 @@ app.put('/instructor/profile', async (req, res) => {
   }
 });
 
-// ** ChatGPT SQL Query Route **
+// ChatGPT SQL Query Route
 
-// Send a question to ChatGPT to generate and execute an SQL query
 app.post('/chat', async (req, res) => {
   const { question } = req.body;
   try {
     if (!question) {
       return res.status(400).json({ success: false, message: "Question text is required" });
     }
-    // Use OpenAI API to get an SQL query for the question
-    const completion = await openai.createChatCompletion({
+    // Use the new OpenAI SDK v4 method for chat completions
+    const completion = await openai.chat.completions.create({
       model: 'gpt-3.5-turbo',
       messages: [
         { role: 'system', content: "You are a helpful assistant that only outputs SQL queries without explanation." },
         { role: 'user', content: `Convert the following question to an SQL query:\n"${question}"` }
       ]
     });
-    const sqlQuery = completion.data.choices[0].message.content.trim();
+    const sqlQuery = completion.choices[0].message.content.trim();
     console.log("Generated SQL query:", sqlQuery);
-    // Execute the generated SQL query on the SQLite database
     let queryResult;
     if (sqlQuery.toLowerCase().startsWith('select')) {
-      // For SELECT queries, use QueryTypes.SELECT to get results directly
       queryResult = await sequelize.query(sqlQuery, { type: QueryTypes.SELECT });
     } else {
-      // For non-SELECT queries, execute and return info (like number of affected rows)
       const [result, metadata] = await sequelize.query(sqlQuery);
       if (metadata && typeof metadata.changes !== 'undefined') {
         queryResult = `${metadata.changes} rows affected.`;
       } else if (metadata && typeof metadata.rowCount !== 'undefined') {
         queryResult = `${metadata.rowCount} rows affected.`;
       } else {
-        queryResult = result;  // could be undefined or some result for other queries
+        queryResult = result;
       }
     }
     return res.json({ success: true, query: sqlQuery, result: queryResult });
@@ -516,7 +484,7 @@ app.post('/chat', async (req, res) => {
   }
 });
 
-// Global error handling middleware (catch any unhandled errors)
+// Global error handling middleware
 app.use((err, req, res, next) => {
   console.error("Unhandled error:", err);
   res.status(500).json({ success: false, message: "Internal server error" });
