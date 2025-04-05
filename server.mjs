@@ -68,13 +68,13 @@ const Quiz = sequelize.define('Quiz', {
   freezeTableName: true
 });
 
-// const Question = sequelize.define('Question', {
-//   text:          { type: DataTypes.TEXT, allowNull: false },
-//   correctAnswer: { type: DataTypes.TEXT, allowNull: false },
-//   quizId:        { type: DataTypes.INTEGER, allowNull: false }  // foreign key to Quiz
-// }, {
-//   freezeTableName: true
-// });
+const Question = sequelize.define('Question', {
+  text:          { type: DataTypes.TEXT, allowNull: false },
+  correctAnswer: { type: DataTypes.TEXT, allowNull: false },
+  quizId:        { type: DataTypes.INTEGER, allowNull: false }  // foreign key to Quiz
+}, {
+  freezeTableName: true
+});
 
 const Enrollment = sequelize.define('Enrollment', {
   userId:   { type: DataTypes.INTEGER, allowNull: false },
@@ -85,14 +85,14 @@ const Enrollment = sequelize.define('Enrollment', {
   freezeTableName: true
 });
 
-// const Attempt = sequelize.define('Attempt', {
-//   answer:     { type: DataTypes.TEXT },
-//   correct:    { type: DataTypes.BOOLEAN },
-//   userId:     { type: DataTypes.INTEGER, allowNull: false },
-//   questionId: { type: DataTypes.INTEGER, allowNull: false }
-// }, {
-//   freezeTableName: true
-// });
+const Attempt = sequelize.define('Attempt', {
+  answer:     { type: DataTypes.TEXT },
+  correct:    { type: DataTypes.BOOLEAN },
+  userId:     { type: DataTypes.INTEGER, allowNull: false },
+  questionId: { type: DataTypes.INTEGER, allowNull: false }
+}, {
+  freezeTableName: true
+});
 
 // Define model relationships
 
