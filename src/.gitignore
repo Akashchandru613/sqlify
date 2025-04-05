@@ -1,0 +1,4 @@
+# Root .gitignore
+node_modules/
+sql_learning_platform.db
+.env
