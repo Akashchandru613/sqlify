@@ -60,7 +60,7 @@ app.post('/login', async (req, res) => {
       console.log(insertUser, "Insert Response")
     };
     console.log("Outside !user")
-    return res.json({ success: true, userId: user.uid, role: user.role,userName : user.name });
+    return res.json({ success: true, userId: user[0].uid, role: user[0].role,userName : user[0].name });
   } catch (error) {
     console.error("Login error:", error);
     return res.status(500).json({ success: false, message: "Server error during login" });
