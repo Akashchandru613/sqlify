@@ -8,6 +8,7 @@ dotenv.config();
 import express from 'express';
 import { Sequelize, DataTypes, QueryTypes } from 'sequelize';
 import OpenAI from 'openai';
+// import { use } from './src/routes/authRoutes';
 
 // Initialize the OpenAI client using the API key from the environment
 const openai = new OpenAI({
@@ -30,99 +31,7 @@ const sequelize = new Sequelize(
   }
 );
 
-// Define Sequelize models
 
-const User = sequelize.define('User', {
-  username:    { type: DataTypes.STRING, allowNull: false, unique: true },
-  password:    { type: DataTypes.STRING, allowNull: false },
-  role:        { type: DataTypes.ENUM('instructor', 'student'), allowNull: false },
-  institution: { type: DataTypes.STRING },
-  certification:{ type: DataTypes.STRING },
-  yoe:         { type: DataTypes.INTEGER }
-}, {
-  freezeTableName: true
-});
-
-
-const Course = sequelize.define('Course', {
-  name:         { type: DataTypes.STRING, allowNull: false },
-  description:  { type: DataTypes.TEXT },
-  instructorId: { type: DataTypes.INTEGER, allowNull: false }  // foreign key to User (instructor)
-}, {
-  freezeTableName: true
-});
-
-const Module = sequelize.define('Module', {
-  title:    { type: DataTypes.STRING, allowNull: false },
-  content:  { type: DataTypes.TEXT },
-  courseId: { type: DataTypes.INTEGER, allowNull: false }  // foreign key to Course
-}, {
-  freezeTableName: true
-});
-
-const Quiz = sequelize.define('Quiz', {
-  name:       { type: DataTypes.STRING, allowNull: false },
-  difficulty: { type: DataTypes.INTEGER },  // 1-5 difficulty level
-  moduleId:   { type: DataTypes.INTEGER, allowNull: false }  // foreign key to Module
-}, {
-  freezeTableName: true
-});
-
-const Question = sequelize.define('Question', {
-  text:          { type: DataTypes.TEXT, allowNull: false },
-  correctAnswer: { type: DataTypes.TEXT, allowNull: false },
-  quizId:        { type: DataTypes.INTEGER, allowNull: false }  // foreign key to Quiz
-}, {
-  freezeTableName: true
-});
-
-const Enrollment = sequelize.define('Enrollment', {
-  userId:   { type: DataTypes.INTEGER, allowNull: false },
-  courseId: { type: DataTypes.INTEGER, allowNull: false }
-}, {
-  indexes: [{ unique: true, fields: ['userId', 'courseId'] }]
-}, {
-  freezeTableName: true
-});
-
-const Attempt = sequelize.define('Attempt', {
-  answer:     { type: DataTypes.TEXT },
-  correct:    { type: DataTypes.BOOLEAN },
-  userId:     { type: DataTypes.INTEGER, allowNull: false },
-  questionId: { type: DataTypes.INTEGER, allowNull: false }
-}, {
-  freezeTableName: true
-});
-
-// Define model relationships
-
-// User (Instructor) <-> Course
-User.hasMany(Course, { as: 'Courses', foreignKey: 'instructorId' });
-Course.belongsTo(User, { as: 'Instructor', foreignKey: 'instructorId' });
-
-// Course <-> Module
-Course.hasMany(Module, { foreignKey: 'courseId' });
-Module.belongsTo(Course, { foreignKey: 'courseId' });
-
-// Module <-> Quiz
-Module.hasMany(Quiz, { foreignKey: 'moduleId' });
-Quiz.belongsTo(Module, { foreignKey: 'moduleId' });
-
-// Quiz <-> Question
-Quiz.hasMany(Question, { foreignKey: 'quizId' });
-Question.belongsTo(Quiz, { foreignKey: 'quizId' });
-
-// User (Student) <-> Course through Enrollment
-User.hasMany(Enrollment, { foreignKey: 'userId' });
-Course.hasMany(Enrollment, { foreignKey: 'courseId' });
-Enrollment.belongsTo(User, { foreignKey: 'userId' });
-Enrollment.belongsTo(Course, { foreignKey: 'courseId' });
-
-// User (Student) <-> Question through Attempt
-User.hasMany(Attempt, { foreignKey: 'userId' });
-Question.hasMany(Attempt, { foreignKey: 'questionId' });
-Attempt.belongsTo(User, { foreignKey: 'userId' });
-Attempt.belongsTo(Question, { foreignKey: 'questionId' });
 
 // Sync all models with the database (create tables if not exist)
 sequelize.sync()
@@ -137,14 +46,21 @@ sequelize.sync()
 app.post('/login', async (req, res) => {
   const { username, password } = req.body;
   try {
-    const user = await User.findOne({ where: { username, password } });
-    console.log(user,"UserDetails")
+    const user = await sequelize.query(
+      "SELECT * FROM User WHERE username = ? AND password = ?",
+      { replacements: [username, password], type: QueryTypes.SELECT }
+    );
+    console.log(user, "UserDetails")
     if (!user) {
       console.log("Inside !user")
-      return res.json({ success: false, message: "Invalid username or password" });
-    }
+      const insertUser = await sequelize.query(
+        "Insert into User (name, email, password, role) values (?,?,?,?)",
+        { replacements: [user.name,user.email,user.password,user.role], type : QueryTypes.INSERT}
+      )
+      console.log(insertUser, "Insert Response")
+    };
     console.log("Outside !user")
-    return res.json({ success: true, userId: user.id, role: user.role });
+    return res.json({ success: true, userId: user.uid, role: user.role,userName : user.name });
   } catch (error) {
     console.error("Login error:", error);
     return res.status(500).json({ success: false, message: "Server error during login" });
@@ -320,13 +236,13 @@ app.get('/instructor/progress', async (req, res) => {
   try {
     const attempts = await Attempt.findAll({
       include: [
-        { 
-          model: Question, 
-          attributes: ['id', 'text', 'correctAnswer'], 
+        {
+          model: Question,
+          attributes: ['id', 'text', 'correctAnswer'],
           include: [
-            { 
-              model: Quiz, 
-              attributes: ['id', 'name'], 
+            {
+              model: Quiz,
+              attributes: ['id', 'name'],
               include: [
                 { model: Module, attributes: ['id'], where: { courseId } }
               ]
@@ -514,7 +430,7 @@ app.use((err, req, res, next) => {
 });
 
 // Start the server
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 8000;
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
 });
