@@ -55,7 +55,7 @@ app.post('/login', async (req, res) => {
       console.log("Inside !user")
       const insertUser = await sequelize.query(
         "Insert into User (name, email, password, role) values (?,?,?,?)",
-        { replacements: [user.name,user.email,user.password,user.role], type : QueryTypes.INSERT}
+        { replacements: [req.name,req.email,req.password,req.role], type : QueryTypes.INSERT}
       )
       console.log(insertUser, "Insert Response")
     };
