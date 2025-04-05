@@ -38,46 +38,61 @@ const User = sequelize.define('User', {
   role:        { type: DataTypes.ENUM('instructor', 'student'), allowNull: false },
   institution: { type: DataTypes.STRING },
   certification:{ type: DataTypes.STRING },
-  yoe:         { type: DataTypes.INTEGER }  // years of experience for instructors
+  yoe:         { type: DataTypes.INTEGER }
+}, {
+  freezeTableName: true
 });
+
 
 const Course = sequelize.define('Course', {
   name:         { type: DataTypes.STRING, allowNull: false },
   description:  { type: DataTypes.TEXT },
   instructorId: { type: DataTypes.INTEGER, allowNull: false }  // foreign key to User (instructor)
+}, {
+  freezeTableName: true
 });
 
 const Module = sequelize.define('Module', {
   title:    { type: DataTypes.STRING, allowNull: false },
   content:  { type: DataTypes.TEXT },
   courseId: { type: DataTypes.INTEGER, allowNull: false }  // foreign key to Course
+}, {
+  freezeTableName: true
 });
 
 const Quiz = sequelize.define('Quiz', {
   name:       { type: DataTypes.STRING, allowNull: false },
   difficulty: { type: DataTypes.INTEGER },  // 1-5 difficulty level
   moduleId:   { type: DataTypes.INTEGER, allowNull: false }  // foreign key to Module
+}, {
+  freezeTableName: true
 });
 
-const Question = sequelize.define('Question', {
-  text:          { type: DataTypes.TEXT, allowNull: false },
-  correctAnswer: { type: DataTypes.TEXT, allowNull: false },
-  quizId:        { type: DataTypes.INTEGER, allowNull: false }  // foreign key to Quiz
-});
+// const Question = sequelize.define('Question', {
+//   text:          { type: DataTypes.TEXT, allowNull: false },
+//   correctAnswer: { type: DataTypes.TEXT, allowNull: false },
+//   quizId:        { type: DataTypes.INTEGER, allowNull: false }  // foreign key to Quiz
+// }, {
+//   freezeTableName: true
+// });
 
 const Enrollment = sequelize.define('Enrollment', {
   userId:   { type: DataTypes.INTEGER, allowNull: false },
   courseId: { type: DataTypes.INTEGER, allowNull: false }
 }, {
   indexes: [{ unique: true, fields: ['userId', 'courseId'] }]
+}, {
+  freezeTableName: true
 });
 
-const Attempt = sequelize.define('Attempt', {
-  answer:     { type: DataTypes.TEXT },
-  correct:    { type: DataTypes.BOOLEAN },
-  userId:     { type: DataTypes.INTEGER, allowNull: false },
-  questionId: { type: DataTypes.INTEGER, allowNull: false }
-});
+// const Attempt = sequelize.define('Attempt', {
+//   answer:     { type: DataTypes.TEXT },
+//   correct:    { type: DataTypes.BOOLEAN },
+//   userId:     { type: DataTypes.INTEGER, allowNull: false },
+//   questionId: { type: DataTypes.INTEGER, allowNull: false }
+// }, {
+//   freezeTableName: true
+// });
 
 // Define model relationships
 
@@ -123,9 +138,12 @@ app.post('/login', async (req, res) => {
   const { username, password } = req.body;
   try {
     const user = await User.findOne({ where: { username, password } });
+    console.log(user,"UserDetails")
     if (!user) {
+      console.log("Inside !user")
       return res.json({ success: false, message: "Invalid username or password" });
     }
+    console.log("Outside !user")
     return res.json({ success: true, userId: user.id, role: user.role });
   } catch (error) {
     console.error("Login error:", error);
