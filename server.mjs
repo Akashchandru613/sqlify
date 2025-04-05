@@ -52,10 +52,10 @@ app.post('/login', async (req, res) => {
     );
     console.log(user, "UserDetails")
     if (user.length === 0) {
-      console.log("Inside !user")
+      console.log(user,"Inside !user")
       const insertUser = await sequelize.query(
         "Insert into User (name, email, password, role) values (?,?,?,?)",
-        { replacements: [req.name,req.email,req.password,req.role], type : QueryTypes.INSERT}
+        { replacements: [req.body.name,req.body.email,req.body.password,req.body.role], type : QueryTypes.INSERT}
       )
       console.log(insertUser, "Insert Response")
     };
