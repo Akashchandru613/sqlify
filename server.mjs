@@ -44,8 +44,9 @@ sequelize.sync()
 
 // Login route: verify username and password
 app.post('/login', async (req, res) => {
-  const { username, password } = req.body;
+  const { username,email, password, role } = req.body;
   try {
+    console.log("Request body:", req.body);
     const user = await sequelize.query(
       "SELECT * FROM User WHERE name = ? AND password = ?",
       { replacements: [username, password], type: QueryTypes.SELECT }
@@ -55,7 +56,7 @@ app.post('/login', async (req, res) => {
       console.log(user,"Inside !user")
       const insertUser = await sequelize.query(
         "Insert into User (name, email, password, role) values (?,?,?,?)",
-        { replacements: [req.body.name,req.body.email,req.body.password,req.body.role], type : QueryTypes.INSERT}
+        { replacements: [username,email, password, role], type : QueryTypes.INSERT}
       )
       console.log(insertUser, "Insert Response")
     };
