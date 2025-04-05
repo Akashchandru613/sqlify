@@ -19,10 +19,10 @@ const app = express();
 app.use(express.json());  // for parsing JSON request bodies
 
 // Initialize Sequelize with SQLite database (update this config for MySQL if needed)
-const sequelize = new Sequelize({
-  dialect: 'sqlite',
-  storage: 'database.sqlite',  // SQLite file; update as necessary for other DBs
-  logging: false,                // disable logging SQL queries (optional)
+const sequelize = new Sequelize(DB_NAME, DB_USER, DB_PASSWORD, {
+  host: DB_HOST, // e.g., 'localhost' or an IP address
+  dialect: 'mysql',
+  logging: false
 });
 
 // Define Sequelize models
