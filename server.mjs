@@ -51,7 +51,7 @@ app.post('/login', async (req, res) => {
       { replacements: [username, password], type: QueryTypes.SELECT }
     );
     console.log(user, "UserDetails")
-    if (!user) {
+    if (user.length === 0) {
       console.log("Inside !user")
       const insertUser = await sequelize.query(
         "Insert into User (name, email, password, role) values (?,?,?,?)",
@@ -60,7 +60,7 @@ app.post('/login', async (req, res) => {
       console.log(insertUser, "Insert Response")
     };
     console.log("Outside !user")
-    return res.json({ success: true, userId: user[0].uid, role: user[0].role,userName : user[0].name });
+    return res.json({ success: true, userId: user[0].uid, role: user[0].role, userName : user[0].name });
   } catch (error) {
     console.error("Login error:", error);
     return res.status(500).json({ success: false, message: "Server error during login" });
