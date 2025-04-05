@@ -47,7 +47,7 @@ app.post('/login', async (req, res) => {
   const { username, password } = req.body;
   try {
     const user = await sequelize.query(
-      "SELECT * FROM User WHERE username = ? AND password = ?",
+      "SELECT * FROM User WHERE name = ? AND password = ?",
       { replacements: [username, password], type: QueryTypes.SELECT }
     );
     console.log(user, "UserDetails")
