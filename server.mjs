@@ -65,6 +65,7 @@ app.post('/login', async (req, res) => {
         { replacements: [name, email, password, role], type: QueryTypes.INSERT }
       );
       console.log(insertUser, "Insert Response");
+      return (`Welcome ${name}`);
       // Optionally, you could re-run the SELECT query to fetch the newly inserted user.
     }
     
