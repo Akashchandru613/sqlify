@@ -44,29 +44,40 @@ sequelize.sync()
 
 // Login route: verify username and password
 app.post('/login', async (req, res) => {
-  const { username,email, password, role } = req.body;
+  // Destructure using the keys provided in your request body
+  const { name, email, password, role } = req.body;
+  
   try {
     console.log("Request body:", req.body);
+    
+    // Use the 'name' and 'password' from the request
     const user = await sequelize.query(
       "SELECT * FROM User WHERE name = ? AND password = ?",
-      { replacements: [username, password], type: QueryTypes.SELECT }
+      { replacements: [name, password], type: QueryTypes.SELECT }
     );
-    console.log(user, "UserDetails")
+    
+    console.log(user, "UserDetails");
+    
     if (user.length === 0) {
-      console.log(user,"Inside !user")
+      console.log("No user found, inserting new user");
       const insertUser = await sequelize.query(
-        "Insert into User (name, email, password, role) values (?,?,?,?)",
-        { replacements: [username,email, password, role], type : QueryTypes.INSERT}
-      )
-      console.log(insertUser, "Insert Response")
-    };
-    console.log("Outside !user")
-    return res.json({ success: true, userId: user[0].uid, role: user[0].role, userName : user[0].name });
+        "INSERT INTO User (name, email, password, role) VALUES (?,?,?,?)",
+        { replacements: [name, email, password, role], type: QueryTypes.INSERT }
+      );
+      console.log(insertUser, "Insert Response");
+      // Optionally, you could re-run the SELECT query to fetch the newly inserted user.
+    }
+    
+    // Assuming the user now exists, return its details.
+    // (If you want to fetch the new user after an insert, you may need another SELECT query.)
+    return res.json({ success: true, userId: user[0].uid, role: user[0].role, userName: user[0].name });
+    
   } catch (error) {
     console.error("Login error:", error);
     return res.status(500).json({ success: false, message: "Server error during login" });
   }
 });
+
 
 // Signup route: create a new user (instructor or student)
 app.post('/signup', async (req, res) => {
