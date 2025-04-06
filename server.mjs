@@ -6,7 +6,7 @@ dotenv.config();
 
 // Import required packages
 import express from 'express';
-import { Sequelize, DataTypes, QueryTypes } from 'sequelize';
+import { Sequelize, QueryTypes } from 'sequelize';
 import OpenAI from 'openai';
 // import { use } from './src/routes/authRoutes';
 
@@ -20,7 +20,7 @@ const app = express();
 app.use(express.json());  // for parsing JSON request bodies
 
 // Initialize Sequelize with SQLite database (update this config for MySQL if needed)
-const sequelize = new Sequelize(
+const pool = new Sequelize(
   process.env.DB_NAME,      // Database name
   process.env.DB_USER,      // Username
   process.env.DB_PASSWORD,  // Password
@@ -32,46 +32,39 @@ const sequelize = new Sequelize(
 );
 
 
-
-// Sync all models with the database (create tables if not exist)
-sequelize.sync()
-  .then(() => console.log("Database synced"))
-  .catch(err => console.error("Database sync error:", err));
-
 // ----------------- ROUTES -----------------
 
 // Authentication Routes
 
 // Login route: verify username and password
 app.post('/login', async (req, res) => {
-  // Destructure using the keys provided in your request body
-  const { name, email, password, role } = req.body;
-  
+  // Destructure the keys provided in your request body
+  const { name, email, password } = req.body;
+
   try {
     console.log("Request body:", req.body);
-    
-    // Use the 'name' and 'password' from the request
-    const user = await sequelize.query(
-      "SELECT * FROM User WHERE name = ? AND password = ?",
-      { replacements: [name, password], type: QueryTypes.SELECT }
+
+    // Check for a user with either matching name or email and matching password in the same row.
+    const users = await pool.query(
+      "SELECT * FROM User WHERE (name = ? OR email = ?) AND password = ?",
+      { replacements: [name, email, password], type: QueryTypes.SELECT }
     );
     
-    console.log(user, "UserDetails");
+    console.log(users, "UserDetails");
     
-    if (user.length === 0) {
-      console.log("No user found, inserting new user");
-      const insertUser = await sequelize.query(
-        "INSERT INTO User (name, email, password, role) VALUES (?,?,?,?)",
-        { replacements: [name, email, password, role], type: QueryTypes.INSERT }
-      );
-      console.log(insertUser, "Insert Response");
-      return (`Welcome ${name}`);
-      // Optionally, you could re-run the SELECT query to fetch the newly inserted user.
+    // If no user is found, return a message "No data found"
+    if (users.length === 0) {
+      return res.json({ success: false, message: "No data found" });
     }
     
-    // Assuming the user now exists, return its details.
-    // (If you want to fetch the new user after an insert, you may need another SELECT query.)
-    return res.json({ success: true, userId: user[0].uid, role: user[0].role, userName: user[0].name });
+    // If the user exists, return the user details
+    const user = users[0];
+    return res.json({ 
+      success: true, 
+      userId: user.uid, 
+      role: user.role, 
+      userName: user.name 
+    });
     
   } catch (error) {
     console.error("Login error:", error);
@@ -80,58 +73,121 @@ app.post('/login', async (req, res) => {
 });
 
 
+
 // Signup route: create a new user (instructor or student)
 app.post('/signup', async (req, res) => {
-  const { username, password, identity } = req.body;  // identity must be 'instructor' or 'student'
+  const { name, email, password, role } = req.body;
+  if (!name || !email || !password || !role) {
+    return res.status(400).json({ success: false, message: 'Missing required fields' });
+  }
+  if (!['Instructor', 'Student'].includes(role)) {
+    return res.status(400).json({ success: false, message: "Role must be 'Instructor' or 'Student'" });
+  }
+
   try {
-    if (!username || !password || !identity) {
-      return res.status(400).json({ success: false, message: "Missing required fields" });
+    // Check if name OR email already exists
+    const [existing] = await pool.query(
+      `SELECT 1 
+       FROM User 
+       WHERE name = ? OR email = ? 
+       LIMIT 1`,
+      [name, email]
+    );
+    if (existing.length) {
+      return res.status(400).json({ success: false, message: 'Username/Email already taken' });
     }
-    if (!['instructor', 'student'].includes(identity)) {
-      return res.status(400).json({ success: false, message: "Identity must be 'instructor' or 'student'" });
-    }
-    const existing = await User.findOne({ where: { username } });
-    if (existing) {
-      return res.json({ success: false, message: "Username already taken" });
-    }
-    const newUser = await User.create({ username, password, role: identity });
-    return res.json({ success: true, userId: newUser.id, role: newUser.role });
-  } catch (error) {
-    console.error("Signup error:", error);
-    return res.status(500).json({ success: false, message: "Server error during signup" });
+
+    // Insert new user
+    const [result] = await pool.query(
+      `INSERT INTO User (name, email, password, role)
+       VALUES (?, ?, ?, ?)`,
+      [name, email, password, role]
+    );
+
+    return res.json({
+      success: true,
+      userId: result.insertId,
+      role
+    });
+  } catch (err) {
+    console.error('Signup error:', err);
+    return res.status(500).json({ success: false, message: 'Server error during signup' });
   }
 });
 
 // Instructor Routes
 
 // Get all courses for an instructor
-app.get('/instructor/courses', async (req, res) => {
-  const { instructorId } = req.query;
+app.get('/instructor/:instructorId/courses', async (req, res) => {
+  const { instructorId } = req.params;
+
   try {
-    const courses = await Course.findAll({ where: { instructorId } });
-    return res.json(courses);
-  } catch (error) {
-    console.error("Fetch courses error:", error);
-    return res.status(500).json({ success: false, message: "Failed to retrieve courses" });
+    // Join Course with User to get instructor name
+    const [rows] = await pool.query(
+      `SELECT 
+         c.id           AS courseId,
+         c.name         AS courseName,
+         c.description  AS courseDescription,
+         u.name         AS instructorName
+       FROM Course c
+       JOIN User u
+         ON c.instructor_id = u.uid
+       WHERE c.instructor_id = ?`,
+      [instructorId]
+    );
+
+    return res.json({ success: true, courses: rows });
+  } catch (err) {
+    console.error('Error fetching courses:', err);
+    return res.status(500).json({ success: false, message: 'Server error' });
   }
 });
+
 
 // Create a new course (instructor)
 app.post('/instructor/courses', async (req, res) => {
   const { name, description, instructorId } = req.body;
+
+  // 1) Validate inputs
+  if (!name || !instructorId) {
+    return res.status(400).json({
+      success: false,
+      message: 'Course name and instructorId are required'
+    });
+  }
+
   try {
-    if (!name || !instructorId) {
-      return res.status(400).json({ success: false, message: "Course name and instructorId are required" });
+    // 2) Verify instructorId belongs to an Instructor
+    const [users] = await pool.query(
+      'SELECT role FROM User WHERE uid = ? LIMIT 1',
+      [instructorId]
+    );
+
+    if (users.length === 0 || users[0].role !== 'Instructor') {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid instructorId'
+      });
     }
-    const instructor = await User.findByPk(instructorId);
-    if (!instructor || instructor.role !== 'instructor') {
-      return res.status(400).json({ success: false, message: "Invalid instructorId" });
-    }
-    await Course.create({ name, description: description || '', instructorId });
-    return res.json({ success: true });
-  } catch (error) {
-    console.error("Create course error:", error);
-    return res.status(500).json({ success: false, message: "Failed to create course" });
+
+    // 3) Insert new course
+    const [result] = await pool.query(
+      `INSERT INTO Course (name, description, instructor_id)
+       VALUES (?, ?, ?)`,
+      [name, description || '', instructorId]
+    );
+
+    // 4) Respond with success (and new course ID if needed)
+    return res.json({
+      success: true,
+      courseId: result.insertId
+    });
+  } catch (err) {
+    console.error('Create course error:', err);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to create course'
+    });
   }
 });
 
@@ -148,298 +204,630 @@ app.get('/instructor/modules', async (req, res) => {
 });
 
 // Create a new module under a course
-app.post('/instructor/modules', async (req, res) => {
-  const { title, content, courseId } = req.body;
+app.get('/instructor/modules', async (req, res) => {
+  const { courseId } = req.query;
+
+  // 1) Validate input
+  if (!courseId) {
+    return res.status(400).json({
+      success: false,
+      message: 'Missing required query parameter: courseId'
+    });
+  }
+
   try {
-    if (!title || !courseId) {
-      return res.status(400).json({ success: false, message: "Module title and courseId are required" });
-    }
-    const course = await Course.findByPk(courseId);
-    if (!course) {
-      return res.status(400).json({ success: false, message: "Course not found" });
-    }
-    await Module.create({ title, content: content || '', courseId });
-    return res.json({ success: true });
-  } catch (error) {
-    console.error("Create module error:", error);
-    return res.status(500).json({ success: false, message: "Failed to create module" });
+    // 2) Fetch modules for that course
+    const [modules] = await pool.query(
+      `SELECT 
+         id, 
+         title, 
+         content_link AS contentLink 
+       FROM Module 
+       WHERE course_id = ?`,
+      [courseId]
+    );
+
+    // 3) Return the modules array
+    return res.json({
+      success: true,
+      modules
+    });
+  } catch (err) {
+    console.error('Error fetching modules:', err);
+    return res.status(500).json({
+      success: false,
+      message: 'Server error fetching modules'
+    });
   }
 });
+
 
 // Update a module's details
 app.put('/instructor/modules/:moduleId', async (req, res) => {
   const { moduleId } = req.params;
-  const { title, content, courseId } = req.body;
+  const { instructorId, title, contentLink, courseId: newCourseId } = req.body;
+
+  if (!instructorId) {
+    return res.status(400).json({ success: false, message: 'Missing instructorId' });
+  }
+
   try {
-    const module = await Module.findByPk(moduleId);
-    if (!module) {
-      return res.status(404).json({ success: false, message: "Module not found" });
+    // 1) Fetch the module
+    const [[moduleRow]] = await pool.query(
+      'SELECT * FROM Module WHERE id = ?',
+      [moduleId]
+    );
+    if (!moduleRow) {
+      return res.status(404).json({ success: false, message: 'Module not found' });
     }
-    if (title !== undefined) module.title = title;
-    if (content !== undefined) module.content = content;
-    if (courseId !== undefined) module.courseId = courseId;
-    await module.save();
-    return res.json({ success: true });
-  } catch (error) {
-    console.error("Update module error:", error);
-    return res.status(500).json({ success: false, message: "Failed to update module" });
+
+    const currentCourseId = moduleRow.course_id;
+
+    // 2) Verify instructor owns current course
+    const [[currentCourse]] = await pool.query(
+      'SELECT instructor_id FROM Course WHERE id = ?',
+      [currentCourseId]
+    );
+    if (!currentCourse || currentCourse.instructor_id !== instructorId) {
+      return res.status(403).json({ success: false, message: 'Not authorized to update this module' });
+    }
+
+    // 3) If changing course, verify ownership of new course
+    if (newCourseId !== undefined && newCourseId !== currentCourseId) {
+      const [[newCourse]] = await pool.query(
+        'SELECT instructor_id FROM Course WHERE id = ?',
+        [newCourseId]
+      );
+      if (!newCourse || newCourse.instructor_id !== instructorId) {
+        return res.status(403).json({ success: false, message: 'Not authorized to assign module to this course' });
+      }
+    }
+
+    // 4) Build dynamic UPDATE
+    const fields = [];
+    const values = [];
+
+    if (title !== undefined) {
+      fields.push('title = ?');
+      values.push(title);
+    }
+    if (contentLink !== undefined) {
+      fields.push('content_link = ?');
+      values.push(contentLink);
+    }
+    if (newCourseId !== undefined) {
+      fields.push('course_id = ?');
+      values.push(newCourseId);
+    }
+
+    if (fields.length === 0) {
+      return res.status(400).json({ success: false, message: 'No fields to update' });
+    }
+
+    values.push(moduleId); // for WHERE clause
+
+    const sql = `UPDATE Module SET ${fields.join(', ')} WHERE id = ?`;
+    await pool.query(sql, values);
+
+    return res.json({ success: true, message: 'Module updated' });
+  } catch (err) {
+    console.error('Update module error:', err);
+    return res.status(500).json({ success: false, message: 'Server error updating module' });
   }
 });
 
 // Get all quizzes for a module
 app.get('/instructor/quizzes', async (req, res) => {
   const { moduleId } = req.query;
+  if (!moduleId) {
+    return res.status(400).json({ success: false, message: 'Missing required query parameter: moduleId' });
+  }
+
   try {
-    const quizzes = await Quiz.findAll({ where: { moduleId } });
-    return res.json(quizzes);
-  } catch (error) {
-    console.error("Fetch quizzes error:", error);
-    return res.status(500).json({ success: false, message: "Failed to retrieve quizzes" });
+    const [quizzes] = await pool.query(
+      `SELECT 
+         id, 
+         title, 
+         module_id AS moduleId, 
+         difficulty_level AS difficultyLevel 
+       FROM Quiz 
+       WHERE module_id = ?`,
+      [moduleId]
+    );
+
+    return res.json({ success: true, quizzes });
+  } catch (err) {
+    console.error('Fetch quizzes error:', err);
+    return res.status(500).json({ success: false, message: 'Failed to retrieve quizzes' });
   }
 });
 
 // Create a new quiz (with questions) under a module
 app.post('/instructor/quizzes', async (req, res) => {
-  const { name, difficulty, moduleId, questions } = req.body;
+  const { instructorId, moduleId, title, difficultyLevel, questions, quizId } = req.body;
+
+  // 1) Validate input
+  if (!instructorId || !moduleId || !title || !questions || !Array.isArray(questions)) {
+    return res.status(400).json({
+      success: false,
+      message: 'Required: instructorId, moduleId, title, questions[]'
+    });
+  }
+
   try {
-    if (!name || !moduleId || !questions) {
-      return res.status(400).json({ success: false, message: "Quiz name, moduleId and questions are required" });
+    // 2) Verify instructor owns the course for this module
+    const [[moduleRow]] = await pool.query(
+      'SELECT c.instructor_id FROM Module m JOIN Course c ON m.course_id = c.id WHERE m.id = ?',
+      [moduleId]
+    );
+    if (!moduleRow || moduleRow.instructor_id !== instructorId) {
+      return res.status(403).json({ success: false, message: 'Not authorized' });
     }
-    const module = await Module.findByPk(moduleId);
-    if (!module) {
-      return res.status(400).json({ success: false, message: "Module not found" });
+
+    let effectiveQuizId = quizId;
+
+    if (quizId) {
+      // ——— UPDATE FLOW ———
+      // 3a) Update the quiz record
+      await pool.query(
+        `UPDATE Quiz
+         SET title = ?, difficulty_level = ?, module_id = ?
+         WHERE id = ?`,
+        [title, difficultyLevel || 1, moduleId, quizId]
+      );
+
+      // 3b) Remove old questions
+      await pool.query(
+        'DELETE FROM Question WHERE quiz_id = ?',
+        [quizId]
+      );
+    } else {
+      // ——— CREATE FLOW ———
+      const [quizResult] = await pool.query(
+        `INSERT INTO Quiz (title, difficulty_level, module_id)
+         VALUES (?, ?, ?)`,
+        [title, difficultyLevel || 1, moduleId]
+      );
+      effectiveQuizId = quizResult.insertId;
     }
-    const quiz = await Quiz.create({ name, difficulty: difficulty || 1, moduleId });
-    for (let q of questions) {
-      if (q.text && q.correctAnswer) {
-        await Question.create({ text: q.text, correctAnswer: q.correctAnswer, quizId: quiz.id });
-      }
+
+    // 4) Insert questions for this quiz
+    const insertQ = `INSERT INTO Question (quiz_id, text, correct_answer) VALUES ?`;
+    const questionValues = questions
+      .filter(q => q.text && q.correctAnswer)
+      .map(q => [effectiveQuizId, q.text, q.correctAnswer]);
+
+    if (questionValues.length) {
+      await pool.query(insertQ, [questionValues]);
     }
-    return res.json({ success: true });
-  } catch (error) {
-    console.error("Create quiz error:", error);
-    return res.status(500).json({ success: false, message: "Failed to create quiz" });
+
+    return res.json({
+      success: true,
+      quizId: effectiveQuizId,
+      message: quizId ? 'Quiz updated' : 'Quiz created'
+    });
+
+  } catch (err) {
+    console.error('Create/Update quiz error:', err);
+    return res.status(500).json({ success: false, message: 'Server error' });
   }
 });
 
 // Get all students enrolled in a specific course
 app.get('/instructor/students', async (req, res) => {
-  const { courseId } = req.query;
   try {
-    const enrollments = await Enrollment.findAll({
-      where: { courseId },
-      include: [{ model: User, attributes: ['id', 'username', 'role', 'institution', 'certification', 'yoe'] }]
+    // Fetch all students who have at least one enrollment
+    const [students] = await pool.query(
+      `SELECT 
+         u.uid,
+         u.name,
+         u.email,
+         u.role,
+         u.institution,
+         u.certification,
+         u.yoe
+       FROM User AS u
+       JOIN Enrollment AS e
+         ON u.uid = e.student_id
+       WHERE u.role = 'Student'
+       GROUP BY u.uid`
+    );
+
+    return res.json({ success: true, students });
+  } catch (err) {
+    console.error('Fetch students error:', err);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to retrieve students'
     });
-    const students = enrollments
-      .filter(enr => enr.User && enr.User.role === 'student')
-      .map(enr => ({
-        id: enr.User.id,
-        username: enr.User.username
-      }));
-    return res.json(students);
-  } catch (error) {
-    console.error("Fetch students error:", error);
-    return res.status(500).json({ success: false, message: "Failed to retrieve students" });
   }
 });
 
 // Get all quiz attempts (progress) for a course
 app.get('/instructor/progress', async (req, res) => {
   const { courseId } = req.query;
+  if (!courseId) {
+    return res.status(400).json({ success: false, message: 'Missing required query parameter: courseId' });
+  }
+
   try {
-    const attempts = await Attempt.findAll({
-      include: [
-        {
-          model: Question,
-          attributes: ['id', 'text', 'correctAnswer'],
-          include: [
-            {
-              model: Quiz,
-              attributes: ['id', 'name'],
-              include: [
-                { model: Module, attributes: ['id'], where: { courseId } }
-              ]
-            }
-          ]
-        },
-        { model: User, attributes: ['id', 'username'] }
-      ]
-    });
-    const progressList = attempts
-      .filter(att => att.Question && att.Question.Quiz && att.Question.Quiz.Module)
-      .map(att => ({
-        studentId: att.User.id,
-        studentUsername: att.User.username,
-        questionId: att.Question.id,
-        questionText: att.Question.text,
-        correctAnswer: att.Question.correctAnswer,
-        givenAnswer: att.answer,
-        correct: att.correct,
-        quizName: att.Question.Quiz.name
-      }));
-    return res.json(progressList);
-  } catch (error) {
-    console.error("Fetch progress error:", error);
-    return res.status(500).json({ success: false, message: "Failed to retrieve progress" });
+    const [rows] = await pool.query(
+      `SELECT
+         a.id              AS attemptId,
+         a.userId          AS studentId,
+         u.name            AS studentUsername,
+         a.questionId      AS questionId,
+         q.text            AS questionText,
+         q.correctAnswer   AS correctAnswer,
+         a.answer          AS givenAnswer,
+         a.correct         AS correct,
+         z.title           AS quizTitle
+       FROM Attempt a
+       JOIN \`User\` u    ON a.userId     = u.uid
+       JOIN Question q    ON a.questionId = q.id
+       JOIN Quiz z        ON q.quizId     = z.id
+       JOIN Module m      ON z.module_id  = m.id
+       WHERE m.course_id  = ?
+       ORDER BY a.id`,
+      [courseId]
+    );
+
+    return res.json({ success: true, progress: rows });
+  } catch (err) {
+    console.error('Fetch progress error:', err);
+    return res.status(500).json({ success: false, message: 'Failed to retrieve progress' });
   }
 });
 
 // Student Routes
 
 // Get all courses (for students to view/enroll)
+// GET /student/courses
+// Returns all courses for students to view/enroll
+
 app.get('/student/courses', async (req, res) => {
   try {
-    const courses = await Course.findAll();
-    return res.json(courses);
-  } catch (error) {
-    console.error("Fetch all courses error:", error);
-    return res.status(500).json({ success: false, message: "Failed to retrieve courses" });
+    // Fetch all courses
+    const [courses] = await pool.query(
+      `SELECT 
+         id, 
+         name, 
+         description, 
+         instructor_id AS instructorId 
+       FROM Course`
+    );
+
+    return res.json({ success: true, courses });
+  } catch (err) {
+    console.error('Fetch all courses error:', err);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to retrieve courses'
+    });
   }
 });
+
 
 // Enroll in a course (student enrollment)
+// POST /student/enroll
+// Enroll a student in a course, recording date & status
+
 app.post('/student/enroll', async (req, res) => {
   const { studentId, courseId } = req.body;
+
+  // 1) Validate input
+  if (!studentId || !courseId) {
+    return res.status(400).json({
+      success: false,
+      message: 'studentId and courseId are required'
+    });
+  }
+
   try {
-    if (!studentId || !courseId) {
-      return res.status(400).json({ success: false, message: "studentId and courseId are required" });
+    // 2) Verify student exists and is a 'Student'
+    const [userRows] = await pool.query(
+      'SELECT role FROM User WHERE uid = ? LIMIT 1',
+      [studentId]
+    );
+    if (userRows.length === 0 || userRows[0].role !== 'Student') {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid studentId'
+      });
     }
-    const student = await User.findByPk(studentId);
-    if (!student || student.role !== 'student') {
-      return res.status(400).json({ success: false, message: "Invalid studentId" });
+
+    // 3) Check duplicate enrollment
+    const [enrollRows] = await pool.query(
+      'SELECT 1 FROM Enrollment WHERE student_id = ? AND course_id = ? LIMIT 1',
+      [studentId, courseId]
+    );
+    if (enrollRows.length > 0) {
+      return res.json({
+        success: false,
+        message: 'Student already enrolled in this course'
+      });
     }
-    const existingEnroll = await Enrollment.findOne({ where: { userId: studentId, courseId } });
-    if (existingEnroll) {
-      return res.json({ success: false, message: "Student already enrolled in this course" });
+
+    // 4) Verify course exists
+    const [courseRows] = await pool.query(
+      'SELECT 1 FROM Course WHERE id = ? LIMIT 1',
+      [courseId]
+    );
+    if (courseRows.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Course not found'
+      });
     }
-    const course = await Course.findByPk(courseId);
-    if (!course) {
-      return res.status(400).json({ success: false, message: "Course not found" });
-    }
-    await Enrollment.create({ userId: studentId, courseId });
-    return res.json({ success: true });
-  } catch (error) {
-    console.error("Enrollment error:", error);
-    return res.status(500).json({ success: false, message: "Failed to enroll in course" });
+
+    // 5) Insert enrollment with date & status
+    const [result] = await pool.query(
+      `INSERT INTO Enrollment 
+         (student_id, course_id, enrollment_date, status)
+       VALUES (?, ?, NOW(), 'Active')`,
+      [studentId, courseId]
+    );
+
+    return res.json({
+      success: true,
+      enrollmentId: result.insertId,
+      enrollmentDate: new Date().toISOString(), // mirror NOW()
+      status: 'Active'
+    });
+  } catch (err) {
+    console.error('Enrollment error:', err);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to enroll in course'
+    });
   }
 });
+
 
 // Get all modules of a course (student view)
+// GET /student/modules?courseId=123
+// Returns all modules for a given course (student view)
+
 app.get('/student/modules', async (req, res) => {
   const { courseId } = req.query;
+
+  // 1) Validate input
+  if (!courseId) {
+    return res.status(400).json({ success: false, message: 'Missing required query parameter: courseId' });
+  }
+
   try {
-    const modules = await Module.findAll({ where: { courseId } });
-    return res.json(modules);
-  } catch (error) {
-    console.error("Fetch modules error (student):", error);
-    return res.status(500).json({ success: false, message: "Failed to retrieve modules" });
+    // 2) Fetch modules for that course
+    const [modules] = await pool.query(
+      `SELECT
+         id,
+         title,
+         content_link AS contentLink,
+         course_id   AS courseId
+       FROM Module
+       WHERE course_id = ?`,
+      [courseId]
+    );
+
+    // 3) Return the result
+    return res.json({ success: true, modules });
+  } catch (err) {
+    console.error('Fetch modules error (student):', err);
+    return res.status(500).json({ success: false, message: 'Failed to retrieve modules' });
   }
 });
+
 
 // Get all quizzes of a module (student view)
+// GET /student/quizzes?moduleId=123
+// Returns all quizzes for a given module (student view)
+
 app.get('/student/quizzes', async (req, res) => {
   const { moduleId } = req.query;
+
+  // 1) Validate input
+  if (!moduleId) {
+    return res.status(400).json({ success: false, message: 'Missing required query parameter: moduleId' });
+  }
+
   try {
-    const quizzes = await Quiz.findAll({ where: { moduleId } });
-    return res.json(quizzes);
-  } catch (error) {
-    console.error("Fetch quizzes error (student):", error);
-    return res.status(500).json({ success: false, message: "Failed to retrieve quizzes" });
+    // 2) Fetch quizzes for that module
+    const [quizzes] = await pool.query(
+      `SELECT
+         id,
+         title,
+         module_id       AS moduleId,
+         difficulty_level AS difficultyLevel
+       FROM Quiz
+       WHERE module_id = ?`,
+      [moduleId]
+    );
+
+    // 3) Return the result
+    return res.json({ success: true, quizzes });
+  } catch (err) {
+    console.error('Fetch quizzes error (student):', err);
+    return res.status(500).json({ success: false, message: 'Failed to retrieve quizzes' });
   }
 });
 
+
 // Attempt a quiz (submit answers)
+// POST /student/attempt
+// Record a student’s quiz answers in the Attempt table
+
 app.post('/student/attempt', async (req, res) => {
   const { studentId, answers } = req.body;
+
+  // 1) Validate input
+  if (!studentId || !Array.isArray(answers)) {
+    return res.status(400).json({
+      success: false,
+      message: 'studentId and answers[] are required'
+    });
+  }
+
   try {
-    if (!studentId || !answers) {
-      return res.status(400).json({ success: false, message: "studentId and answers are required" });
+    // 2) Verify student exists and is a Student
+    const [userRows] = await pool.query(
+      'SELECT role FROM `User` WHERE uid = ? LIMIT 1',
+      [studentId]
+    );
+    if (userRows.length === 0 || userRows[0].role !== 'Student') {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid studentId'
+      });
     }
-    const student = await User.findByPk(studentId);
-    if (!student || student.role !== 'student') {
-      return res.status(400).json({ success: false, message: "Invalid studentId" });
-    }
-    for (let ans of answers) {
+
+    // 3) For each answer, check question and insert attempt
+    for (const ans of answers) {
       const { questionId, answer } = ans;
       if (!questionId) continue;
-      const question = await Question.findByPk(questionId);
-      if (!question) continue;
-      const isCorrect = question.correctAnswer === answer;
-      await Attempt.create({ userId: studentId, questionId, answer, correct: isCorrect });
+
+      // 3a) Fetch the correct answer
+      const [qRows] = await pool.query(
+        'SELECT correct_answer FROM Question WHERE id = ? LIMIT 1',
+        [questionId]
+      );
+      if (qRows.length === 0) continue; // skip nonexistent questions
+
+      const isCorrect = qRows[0].correct_answer === answer;
+
+      // 3b) Insert into Attempt
+      await pool.query(
+        `INSERT INTO Attempt 
+           (student_id, question_id, answer, correct)
+         VALUES (?, ?, ?, ?)`,
+        [studentId, questionId, answer, isCorrect]
+      );
     }
+
+    // 4) Respond success
     return res.json({ success: true });
-  } catch (error) {
-    console.error("Quiz attempt error:", error);
-    return res.status(500).json({ success: false, message: "Failed to record quiz attempt" });
+  } catch (err) {
+    console.error('Quiz attempt error:', err);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to record quiz attempts'
+    });
   }
 });
+
 
 // Instructor Profile Route
 
 // Update instructor profile (institution, certification, yoe)
+// PUT /instructor/profile
+// Update an instructor’s institution, certification, and yoe in the User table
+
 app.put('/instructor/profile', async (req, res) => {
   const { instructorId, institution, certification, yoe } = req.body;
+
+  // 1) Validate instructorId
+  if (!instructorId) {
+    return res.status(400).json({ success: false, message: 'instructorId is required' });
+  }
+
   try {
-    if (!instructorId) {
-      return res.status(400).json({ success: false, message: "instructorId is required" });
+    // 2) Verify the user exists and is an Instructor
+    const [userRows] = await pool.query(
+      'SELECT role FROM `User` WHERE uid = ? LIMIT 1',
+      [instructorId]
+    );
+    if (userRows.length === 0 || userRows[0].role !== 'Instructor') {
+      return res.status(404).json({ success: false, message: 'Instructor not found' });
     }
-    const instructor = await User.findByPk(instructorId);
-    if (!instructor || instructor.role !== 'instructor') {
-      return res.status(404).json({ success: false, message: "Instructor not found" });
+
+    // 3) Build dynamic SET clause
+    const fields = [];
+    const values = [];
+
+    if (institution !== undefined) {
+      fields.push('institution = ?');
+      values.push(institution);
     }
-    if (institution !== undefined) instructor.institution = institution;
-    if (certification !== undefined) instructor.certification = certification;
-    if (yoe !== undefined) instructor.yoe = yoe;
-    await instructor.save();
+    if (certification !== undefined) {
+      fields.push('certification = ?');
+      values.push(certification);
+    }
+    if (yoe !== undefined) {
+      fields.push('yoe = ?');
+      values.push(yoe);
+    }
+
+    if (fields.length === 0) {
+      return res.status(400).json({ success: false, message: 'No fields to update' });
+    }
+
+    // 4) Execute UPDATE
+    values.push(instructorId); // for WHERE clause
+    const sql = `UPDATE \`User\` SET ${fields.join(', ')} WHERE uid = ?`;
+    await pool.query(sql, values);
+
     return res.json({ success: true });
-  } catch (error) {
-    console.error("Profile update error:", error);
-    return res.status(500).json({ success: false, message: "Failed to update profile" });
+  } catch (err) {
+    console.error('Profile update error:', err);
+    return res.status(500).json({ success: false, message: 'Failed to update profile' });
   }
 });
+
 
 // ChatGPT SQL Query Route
 
+// POST /chat
+// Generate a SQL query via ChatGPT, execute it against MySQL, and return only the query & results
+
 app.post('/chat', async (req, res) => {
   const { question } = req.body;
+
+  // 1) Validate input
+  if (!question) {
+    return res.status(400).json({ success: false, message: 'Question text is required' });
+  }
+
   try {
-    if (!question) {
-      return res.status(400).json({ success: false, message: "Question text is required" });
-    }
-    // Use the new OpenAI SDK v4 method for chat completions
+    // 2) Ask OpenAI to generate a bare SQL query
     const completion = await openai.chat.completions.create({
       model: 'gpt-3.5-turbo',
       messages: [
-        { role: 'system', content: "You are a helpful assistant that only outputs SQL queries without explanation." },
-        { role: 'user', content: `Convert the following question to an SQL query:\n"${question}"` }
+        { role: 'system', content: 'You are a helpful assistant that only outputs SQL queries without explanation.' },
+        { role: 'user', content: `Convert this question into an SQL query:\n"${question}"` }
       ]
     });
     const sqlQuery = completion.choices[0].message.content.trim();
-    console.log("Generated SQL query:", sqlQuery);
+    console.log('Generated SQL query:', sqlQuery);
+
+    // 3) Execute the query on MySQL
     let queryResult;
     if (sqlQuery.toLowerCase().startsWith('select')) {
-      queryResult = await sequelize.query(sqlQuery, { type: QueryTypes.SELECT });
+      // SELECT → return rows
+      const [rows] = await pool.query(sqlQuery);
+      queryResult = rows;
     } else {
-      const [result, metadata] = await sequelize.query(sqlQuery);
-      if (metadata && typeof metadata.changes !== 'undefined') {
-        queryResult = `${metadata.changes} rows affected.`;
-      } else if (metadata && typeof metadata.rowCount !== 'undefined') {
-        queryResult = `${metadata.rowCount} rows affected.`;
-      } else {
-        queryResult = result;
-      }
+      // Non-SELECT → return affectedRows info
+      const [info] = await pool.query(sqlQuery);
+      queryResult = { affectedRows: info.affectedRows, insertId: info.insertId };
     }
-    return res.json({ success: true, query: sqlQuery, result: queryResult });
-  } catch (error) {
-    console.error("ChatGPT query error:", error);
-    return res.status(500).json({ success: false, message: "Failed to process query", error: error.message });
+
+    // 4) Return the SQL and its result
+    return res.json({
+      success: true,
+      query: sqlQuery,
+      result: queryResult
+    });
+  } catch (err) {
+    console.error('Chat error:', err);
+    return res.status(500).json({ success: false, message: 'Failed to process query', error: err.message });
   }
 });
 
+
 // Global error handling middleware
 app.use((err, req, res, next) => {
-  console.error("Unhandled error:", err);
-  res.status(500).json({ success: false, message: "Internal server error" });
+  console.error('Unhandled error:', err);
+  // You can customize logging, error codes, etc. here.
+  res.status(500).json({ success: false, message: 'Internal server error' });
 });
 
 // Start the server
