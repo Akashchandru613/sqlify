@@ -147,7 +147,7 @@ app.post('/instructor/courses', async (req, res) => {
   try {
     // 2) Verify instructorId belongs to an Instructor
     const [users] = await pool.query(
-      'SELECT role FROM users WHERE uid = ? LIMIT 1',[instructorId]);
+      `SELECT role FROM users WHERE uid = ${instructorId} LIMIT 1`,);
 
     if (users.length === 0 || users[0].role !== 'Instructor') {
       return res.status(400).json({
