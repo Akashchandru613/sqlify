@@ -37,7 +37,7 @@ const pool = new Sequelize(
 // Authentication Routes
 
 // Login route: verify username and password
-app.post('/login', async (req, res) => {
+app.get('/login', async (req, res) => {
   // Destructure the keys provided in your request body
   const { name, email, password } = req.body;
 
@@ -86,23 +86,31 @@ app.post('/signup', async (req, res) => {
 
   try {
     // Check if name OR email already exists
-    const [existing] = await pool.query(
-      `SELECT 1 
-       FROM User 
-       WHERE name = ? OR email = ? 
-       LIMIT 1`,
-      [name, email]
-    );
-    if (existing.length) {
-      return res.status(400).json({ success: false, message: 'Username/Email already taken' });
-    }
+// check for existing user
+const [existing] = await pool.query(
+  `
+    SELECT 1
+    FROM \`User\`
+    WHERE \`name\` = ? OR \`email\` = ?
+    LIMIT 1
+  `,
+  [name, email]
+);
+if (existing.length) {
+  return res
+    .status(400)
+    .json({ success: false, message: 'Username/Email already taken' });
+}
 
-    // Insert new user
-    const [result] = await pool.query(
-      `INSERT INTO User (name, email, password, role)
-       VALUES (?, ?, ?, ?)`,
-      [name, email, password, role]
-    );
+// insert new user
+const [result] = await pool.query(
+  `
+    INSERT INTO \`User\` (\`name\`, \`email\`, \`password\`, \`role\`)
+    VALUES (?, ?, ?, ?)
+  `,
+  [name, email, password, role]
+);
+
 
     return res.json({
       success: true,
@@ -204,7 +212,7 @@ app.get('/instructor/modules', async (req, res) => {
 });
 
 // Create a new module under a course
-app.get('/instructor/modules', async (req, res) => {
+app.get('/instructor/newmodules', async (req, res) => {
   const { courseId } = req.query;
 
   // 1) Validate input
@@ -343,7 +351,7 @@ app.get('/instructor/quizzes', async (req, res) => {
 });
 
 // Create a new quiz (with questions) under a module
-app.post('/instructor/quizzes', async (req, res) => {
+app.post('/instructor/newquizzes', async (req, res) => {
   const { instructorId, moduleId, title, difficultyLevel, questions, quizId } = req.body;
 
   // 1) Validate input
