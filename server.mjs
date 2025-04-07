@@ -99,8 +99,7 @@ if (existing.length) {
 
 // insert new user
 const [result] = await pool.query(
-  ` INSERT INTO users (name, email, password, role) VALUES ("${name}", "${email}", "${password}", "${role}"`
-);
+  ` INSERT INTO users (name, email, password, role) VALUES ("${name}", "${email}", "${password}", "${role}")`);
 
 
     return res.json({
