@@ -87,7 +87,7 @@ app.post('/signup', async (req, res) => {
   try {
     // Check if name OR email already exists
 // check for existing user
-const qry =  `SELECT 1 FROM users WHERE name = ${name} OR email = ${email} LIMIT 1`
+const qry =  `SELECT 1 FROM users WHERE name = "${name}" OR email = "${email}" LIMIT 1`
 
 console.log("The queryy",qry);
 const [existing] = await pool.query(qry);
