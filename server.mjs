@@ -46,7 +46,7 @@ app.get('/login', async (req, res) => {
 
     // Check for a user with either matching name or email and matching password in the same row.
     const users = await pool.query(
-      "SELECT * FROM User WHERE (name = ? OR email = ?) AND password = ?",
+      "SELECT * FROM users WHERE (name = ? OR email = ?) AND password = ?",
       { replacements: [name, email, password], type: QueryTypes.SELECT }
     );
     
@@ -90,7 +90,7 @@ app.post('/signup', async (req, res) => {
 const [existing] = await pool.query(
   `
     SELECT 1
-    FROM \`User\`
+    FROM \`users\`
     WHERE \`name\` = ? OR \`email\` = ?
     LIMIT 1
   `,
@@ -99,13 +99,13 @@ const [existing] = await pool.query(
 if (existing.length) {
   return res
     .status(400)
-    .json({ success: false, message: 'Username/Email already taken' });
+    .json({ success: false, message: 'usersname/Email already taken' });
 }
 
 // insert new user
 const [result] = await pool.query(
   `
-    INSERT INTO \`User\` (\`name\`, \`email\`, \`password\`, \`role\`)
+    INSERT INTO \`users\` (\`name\`, \`email\`, \`password\`, \`role\`)
     VALUES (?, ?, ?, ?)
   `,
   [name, email, password, role]
@@ -130,7 +130,7 @@ app.get('/instructor/:instructorId/courses', async (req, res) => {
   const { instructorId } = req.params;
 
   try {
-    // Join Course with User to get instructor name
+    // Join Course with users to get instructor name
     const [rows] = await pool.query(
       `SELECT 
          c.id           AS courseId,
@@ -138,7 +138,7 @@ app.get('/instructor/:instructorId/courses', async (req, res) => {
          c.description  AS courseDescription,
          u.name         AS instructorName
        FROM Course c
-       JOIN User u
+       JOIN users u
          ON c.instructor_id = u.uid
        WHERE c.instructor_id = ?`,
       [instructorId]
@@ -167,7 +167,7 @@ app.post('/instructor/courses', async (req, res) => {
   try {
     // 2) Verify instructorId belongs to an Instructor
     const [users] = await pool.query(
-      'SELECT role FROM User WHERE uid = ? LIMIT 1',
+      'SELECT role FROM users WHERE uid = ? LIMIT 1',
       [instructorId]
     );
 
@@ -434,7 +434,7 @@ app.get('/instructor/students', async (req, res) => {
          u.institution,
          u.certification,
          u.yoe
-       FROM User AS u
+       FROM users AS u
        JOIN Enrollment AS e
          ON u.uid = e.student_id
        WHERE u.role = 'Student'
@@ -471,7 +471,7 @@ app.get('/instructor/progress', async (req, res) => {
          a.correct         AS correct,
          z.title           AS quizTitle
        FROM Attempt a
-       JOIN \`User\` u    ON a.userId     = u.uid
+       JOIN \`users\` u    ON a.userId     = u.uid
        JOIN Question q    ON a.questionId = q.id
        JOIN Quiz z        ON q.quizId     = z.id
        JOIN Module m      ON z.module_id  = m.id
@@ -534,7 +534,7 @@ app.post('/student/enroll', async (req, res) => {
   try {
     // 2) Verify student exists and is a 'Student'
     const [userRows] = await pool.query(
-      'SELECT role FROM User WHERE uid = ? LIMIT 1',
+      'SELECT role FROM users WHERE uid = ? LIMIT 1',
       [studentId]
     );
     if (userRows.length === 0 || userRows[0].role !== 'Student') {
@@ -678,7 +678,7 @@ app.post('/student/attempt', async (req, res) => {
   try {
     // 2) Verify student exists and is a Student
     const [userRows] = await pool.query(
-      'SELECT role FROM `User` WHERE uid = ? LIMIT 1',
+      'SELECT role FROM `users` WHERE uid = ? LIMIT 1',
       [studentId]
     );
     if (userRows.length === 0 || userRows[0].role !== 'Student') {
@@ -770,7 +770,7 @@ app.put('/instructor/profile', async (req, res) => {
 
     // 4) Execute UPDATE
     values.push(instructorId); // for WHERE clause
-    const sql = `UPDATE \`User\` SET ${fields.join(', ')} WHERE uid = ?`;
+    const sql = `UPDATE \`users\` SET ${fields.join(', ')} WHERE uid = ?`;
     await pool.query(sql, values);
 
     return res.json({ success: true });
