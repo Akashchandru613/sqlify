@@ -98,8 +98,8 @@ if (existing.length) {
 }
 
 // insert new user
-const [result] = await pool.query(` INSERT INTO users (name, email, password, role)
-    VALUES ("${name}", "${email}", "${password}", "${role}"`
+const [result] = await pool.query(
+  ` INSERT INTO users (name, email, password, role) VALUES ("${name}", "${email}", "${password}", "${role}"`
 );
 
 
