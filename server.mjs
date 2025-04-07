@@ -176,9 +176,9 @@ app.post('/instructor/courses', async (req, res) => {
 
 // Get all modules for a course (instructor view)
 app.get('/instructor/modules', async (req, res) => {
-  const { courseId } = req.query;
+  const { courseId } = req.courseId;
   try {
-    const modules = await Module.findAll({ where: { courseId } });
+    const modules = await pool.query(`select * from Module m inner join Course c on c.id = m.course_id where m.course_id = ${co}`);
     return res.json(modules);
   } catch (error) {
     console.error("Fetch modules error:", error);
