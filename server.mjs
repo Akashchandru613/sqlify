@@ -158,7 +158,7 @@ app.post('/instructor/courses', async (req, res) => {
 
     // 3) Insert new course
     const [result] = await pool.query(
-      `INSERT INTO Course (name, description, instructor_id) VALUES (${name}, ${description?description:''}, ${instructorId})`);
+      `INSERT INTO Course (name, description, instructor_id) VALUES ("${name}", "${description?description:''}", "${instructorId}")`);
 
     // 4) Respond with success (and new course ID if needed)
     return res.json({
@@ -278,7 +278,7 @@ app.put('/instructor/modules/:moduleId', async (req, res) => {
 
     values.push(moduleId); // for WHERE clause
 
-    const sql = `UPDATE Module SET ${fields.join(', ')} WHERE id = ?`;
+    const sql = `UPDATE Module SET "${fields.join(', ')}" WHERE id = ?`;
 
     await pool.query(sql, values);
 
@@ -338,7 +338,7 @@ app.post('/instructor/newquizzes', async (req, res) => {
 
       // 3b) Remove old questions
       await pool.query(
-        `DELETE FROM Question WHERE quiz_id = ?`,[quizId]);
+        `DELETE FROM Question WHERE quiz_id = ${quizId}`);
 
     } else {
       // ——— CREATE FLOW ———
