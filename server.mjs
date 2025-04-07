@@ -175,7 +175,7 @@ app.post('/instructor/courses', async (req, res) => {
 });
 
 // Get all modules for a course (instructor view)
-app.get('/instructor/modules', async (req, res) => {
+app.post('/instructor/modules', async (req, res) => {
   console.log("Requestttt",req)
   const { courseId } = req.body;
   try {
