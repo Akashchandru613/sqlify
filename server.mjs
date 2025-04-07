@@ -177,7 +177,7 @@ app.post('/instructor/courses', async (req, res) => {
 // Get all modules for a course (instructor view)
 app.get('/instructor/modules', async (req, res) => {
   console.log("Requestttt",req)
-  const { courseId } = req.body.courseId;
+  const { courseId } = req.body;
   try {
     const modules = await pool.query(`select * from Module m inner join Course c on c.id = m.course_id where m.course_id = ${courseId}`);
     return res.json(modules);
@@ -187,36 +187,47 @@ app.get('/instructor/modules', async (req, res) => {
   }
 });
 
-// Create a new module under a course
-app.get('/instructor/newmodules', async (req, res) => {
-  const { courseId } = req.query;
 
-  // 1) Validate input
-  if (!courseId) {
+// 2) Create a new module under a course (Instructor only)
+
+app.post('/instructor/courses/:courseId/modules', async (req, res) => {
+  // from your auth middleware
+  const { courseId } = req.params;
+  const { title, contentLink } = req.body;
+
+  // 1) Validate
+  if (!title || !contentLink) {
     return res.status(400).json({
       success: false,
-      message: 'Missing required query parameter: courseId'
+      message: 'Missing required fields: title, contentLink'
     });
   }
 
   try {
-    // 2) Fetch modules for that course
-    const [modules] = await pool.query(
-      `SELECT id, title, content_link AS contentLink FROM Module WHERE course_id = ${courseId}`);
+  
+    // 3) Insert the new module
+    const [result] = await pool.query(
+      `INSERT INTO Module (course_id, title, content_link) VALUES (${courseId}, ${title}, ${contentLink})`);
 
-    // 3) Return the modules array
-    return res.json({
+    // 4) Return the created module
+    const newModule = {
+      id: result.insertId,
+      title,
+      contentLink
+    };
+    return res.status(201).json({
       success: true,
-      modules
+      module: newModule
     });
   } catch (err) {
-    console.error('Error fetching modules:', err);
+    console.error('Error creating module:', err);
     return res.status(500).json({
       success: false,
-      message: 'Server error fetching modules'
+      message: 'Server error creating module'
     });
   }
 });
+
 
 
 // Update a module's details
