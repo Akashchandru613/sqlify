@@ -122,17 +122,7 @@ app.get('/instructor/:instructorId/courses', async (req, res) => {
   try {
     // Join Course with users to get instructor name
     const [rows] = await pool.query(
-      `SELECT 
-         c.id           AS courseId,
-         c.name         AS courseName,
-         c.description  AS courseDescription,
-         u.name         AS instructorName
-       FROM Course c
-       JOIN users u
-         ON c.instructor_id = u.uid
-       WHERE c.instructor_id = ?`,
-      [instructorId]
-    );
+      `SELECT c.id AS courseId, c.name AS courseName,c.description  AS courseDescription,u.name AS instructorName FROM Course c JOIN users u ON c.instructor_id = u.uid WHERE c.instructor_id = ${instructorId}`);
 
     return res.json({ success: true, courses: rows });
   } catch (err) {
@@ -157,9 +147,7 @@ app.post('/instructor/courses', async (req, res) => {
   try {
     // 2) Verify instructorId belongs to an Instructor
     const [users] = await pool.query(
-      'SELECT role FROM users WHERE uid = ? LIMIT 1',
-      [instructorId]
-    );
+      'SELECT role FROM users WHERE uid = ? LIMIT 1',[instructorId]);
 
     if (users.length === 0 || users[0].role !== 'Instructor') {
       return res.status(400).json({
@@ -170,10 +158,7 @@ app.post('/instructor/courses', async (req, res) => {
 
     // 3) Insert new course
     const [result] = await pool.query(
-      `INSERT INTO Course (name, description, instructor_id)
-       VALUES (?, ?, ?)`,
-      [name, description || '', instructorId]
-    );
+      `INSERT INTO Course (name, description, instructor_id) VALUES (?, ?, ?)`,[name, description || '', instructorId]);
 
     // 4) Respond with success (and new course ID if needed)
     return res.json({
@@ -216,14 +201,7 @@ app.get('/instructor/newmodules', async (req, res) => {
   try {
     // 2) Fetch modules for that course
     const [modules] = await pool.query(
-      `SELECT 
-         id, 
-         title, 
-         content_link AS contentLink 
-       FROM Module 
-       WHERE course_id = ?`,
-      [courseId]
-    );
+      `SELECT id, title, content_link AS contentLink FROM Module WHERE course_id = ?`,[courseId]);
 
     // 3) Return the modules array
     return res.json({
@@ -252,9 +230,8 @@ app.put('/instructor/modules/:moduleId', async (req, res) => {
   try {
     // 1) Fetch the module
     const [[moduleRow]] = await pool.query(
-      'SELECT * FROM Module WHERE id = ?',
-      [moduleId]
-    );
+      `SELECT * FROM Module WHERE id = ${moduleId}`);
+
     if (!moduleRow) {
       return res.status(404).json({ success: false, message: 'Module not found' });
     }
@@ -263,19 +240,16 @@ app.put('/instructor/modules/:moduleId', async (req, res) => {
 
     // 2) Verify instructor owns current course
     const [[currentCourse]] = await pool.query(
-      'SELECT instructor_id FROM Course WHERE id = ?',
-      [currentCourseId]
-    );
+      `SELECT instructor_id FROM Course WHERE id = ?`,[currentCourseId]);
+
     if (!currentCourse || currentCourse.instructor_id !== instructorId) {
       return res.status(403).json({ success: false, message: 'Not authorized to update this module' });
     }
 
     // 3) If changing course, verify ownership of new course
     if (newCourseId !== undefined && newCourseId !== currentCourseId) {
-      const [[newCourse]] = await pool.query(
-        'SELECT instructor_id FROM Course WHERE id = ?',
-        [newCourseId]
-      );
+      const [[newCourse]] = await pool.query(`SELECT instructor_id FROM Course WHERE id = ?`,[newCourseId]);
+
       if (!newCourse || newCourse.instructor_id !== instructorId) {
         return res.status(403).json({ success: false, message: 'Not authorized to assign module to this course' });
       }
@@ -305,6 +279,7 @@ app.put('/instructor/modules/:moduleId', async (req, res) => {
     values.push(moduleId); // for WHERE clause
 
     const sql = `UPDATE Module SET ${fields.join(', ')} WHERE id = ?`;
+
     await pool.query(sql, values);
 
     return res.json({ success: true, message: 'Module updated' });
@@ -323,15 +298,7 @@ app.get('/instructor/quizzes', async (req, res) => {
 
   try {
     const [quizzes] = await pool.query(
-      `SELECT 
-         id, 
-         title, 
-         module_id AS moduleId, 
-         difficulty_level AS difficultyLevel 
-       FROM Quiz 
-       WHERE module_id = ?`,
-      [moduleId]
-    );
+      `SELECT id, title, module_id AS moduleId, difficulty_level AS difficultyLevel FROM Quiz WHERE module_id = ?`,[moduleId]);
 
     return res.json({ success: true, quizzes });
   } catch (err) {
@@ -355,9 +322,8 @@ app.post('/instructor/newquizzes', async (req, res) => {
   try {
     // 2) Verify instructor owns the course for this module
     const [[moduleRow]] = await pool.query(
-      'SELECT c.instructor_id FROM Module m JOIN Course c ON m.course_id = c.id WHERE m.id = ?',
-      [moduleId]
-    );
+      `SELECT c.instructor_id FROM Module m JOIN Course c ON m.course_id = c.id WHERE m.id = ?`,[moduleId]);
+
     if (!moduleRow || moduleRow.instructor_id !== instructorId) {
       return res.status(403).json({ success: false, message: 'Not authorized' });
     }
@@ -368,24 +334,17 @@ app.post('/instructor/newquizzes', async (req, res) => {
       // ——— UPDATE FLOW ———
       // 3a) Update the quiz record
       await pool.query(
-        `UPDATE Quiz
-         SET title = ?, difficulty_level = ?, module_id = ?
-         WHERE id = ?`,
-        [title, difficultyLevel || 1, moduleId, quizId]
-      );
+        `UPDATE QuizSET title = ?, difficulty_level = ?, module_id = ?WHERE id = ?`,[title, difficultyLevel || 1, moduleId, quizId]);
 
       // 3b) Remove old questions
       await pool.query(
-        'DELETE FROM Question WHERE quiz_id = ?',
-        [quizId]
-      );
+        `DELETE FROM Question WHERE quiz_id = ?`,[quizId]);
+
     } else {
       // ——— CREATE FLOW ———
       const [quizResult] = await pool.query(
-        `INSERT INTO Quiz (title, difficulty_level, module_id)
-         VALUES (?, ?, ?)`,
-        [title, difficultyLevel || 1, moduleId]
-      );
+        `INSERT INTO Quiz (title, difficulty_level, module_id)VALUES (?, ?, ?)`,[title, difficultyLevel || 1, moduleId]);
+
       effectiveQuizId = quizResult.insertId;
     }
 
@@ -416,20 +375,8 @@ app.get('/instructor/students', async (req, res) => {
   try {
     // Fetch all students who have at least one enrollment
     const [students] = await pool.query(
-      `SELECT 
-         u.uid,
-         u.name,
-         u.email,
-         u.role,
-         u.institution,
-         u.certification,
-         u.yoe
-       FROM users AS u
-       JOIN Enrollment AS e
-         ON u.uid = e.student_id
-       WHERE u.role = 'Student'
-       GROUP BY u.uid`
-    );
+      `SELECT u.uid, u.name, u.email, u.role, u.institution, u.certification, u.yoe FROM users AS u JOIN Enrollment AS e ON u.uid = e.student_id WHERE u.role = 'Student' GROUP BY u.uid`);
+
 
     return res.json({ success: true, students });
   } catch (err) {
@@ -450,25 +397,7 @@ app.get('/instructor/progress', async (req, res) => {
 
   try {
     const [rows] = await pool.query(
-      `SELECT
-         a.id              AS attemptId,
-         a.userId          AS studentId,
-         u.name            AS studentUsername,
-         a.questionId      AS questionId,
-         q.text            AS questionText,
-         q.correctAnswer   AS correctAnswer,
-         a.answer          AS givenAnswer,
-         a.correct         AS correct,
-         z.title           AS quizTitle
-       FROM Attempt a
-       JOIN \`users\` u    ON a.userId     = u.uid
-       JOIN Question q    ON a.questionId = q.id
-       JOIN Quiz z        ON q.quizId     = z.id
-       JOIN Module m      ON z.module_id  = m.id
-       WHERE m.course_id  = ?
-       ORDER BY a.id`,
-      [courseId]
-    );
+      `SELECT a.id AS attemptId, a.userId AS studentId, u.name AS studentUsername, a.questionId AS questionId, q.text AS questionText, q.correctAnswer AS correctAnswer, a.answer AS givenAnswer, a.correct AS correct, z.title AS quizTitle FROM Attempt a JOIN users u ON a.userId = u.uid JOIN Question q ON a.questionId = q.id JOIN Quiz z ON q.quizId = z.id JOIN Module m ON z.module_id = m.id WHERE m.course_id = ? ORDER BY a.id`, [courseId]);
 
     return res.json({ success: true, progress: rows });
   } catch (err) {
@@ -487,13 +416,7 @@ app.get('/student/courses', async (req, res) => {
   try {
     // Fetch all courses
     const [courses] = await pool.query(
-      `SELECT 
-         id, 
-         name, 
-         description, 
-         instructor_id AS instructorId 
-       FROM Course`
-    );
+      `SELECT id, name, description, instructor_id AS instructorId FROM Course`);
 
     return res.json({ success: true, courses });
   } catch (err) {
@@ -524,9 +447,8 @@ app.post('/student/enroll', async (req, res) => {
   try {
     // 2) Verify student exists and is a 'Student'
     const [userRows] = await pool.query(
-      'SELECT role FROM users WHERE uid = ? LIMIT 1',
-      [studentId]
-    );
+      'SELECT role FROM users WHERE uid = ? LIMIT 1',[studentId]);
+
     if (userRows.length === 0 || userRows[0].role !== 'Student') {
       return res.status(400).json({
         success: false,
@@ -536,9 +458,8 @@ app.post('/student/enroll', async (req, res) => {
 
     // 3) Check duplicate enrollment
     const [enrollRows] = await pool.query(
-      'SELECT 1 FROM Enrollment WHERE student_id = ? AND course_id = ? LIMIT 1',
-      [studentId, courseId]
-    );
+      'SELECT 1 FROM Enrollment WHERE student_id = ? AND course_id = ? LIMIT 1',[studentId, courseId]);
+
     if (enrollRows.length > 0) {
       return res.json({
         success: false,
@@ -548,9 +469,8 @@ app.post('/student/enroll', async (req, res) => {
 
     // 4) Verify course exists
     const [courseRows] = await pool.query(
-      'SELECT 1 FROM Course WHERE id = ? LIMIT 1',
-      [courseId]
-    );
+      'SELECT 1 FROM Course WHERE id = ? LIMIT 1',[courseId]);
+
     if (courseRows.length === 0) {
       return res.status(400).json({
         success: false,
@@ -560,11 +480,7 @@ app.post('/student/enroll', async (req, res) => {
 
     // 5) Insert enrollment with date & status
     const [result] = await pool.query(
-      `INSERT INTO Enrollment 
-         (student_id, course_id, enrollment_date, status)
-       VALUES (?, ?, NOW(), 'Active')`,
-      [studentId, courseId]
-    );
+      `INSERT INTO Enrollment (student_id, course_id, enrollment_date, status) VALUES (?, ?, NOW(), 'Active')`,[studentId, courseId]);
 
     return res.json({
       success: true,
@@ -597,15 +513,7 @@ app.get('/student/modules', async (req, res) => {
   try {
     // 2) Fetch modules for that course
     const [modules] = await pool.query(
-      `SELECT
-         id,
-         title,
-         content_link AS contentLink,
-         course_id   AS courseId
-       FROM Module
-       WHERE course_id = ?`,
-      [courseId]
-    );
+      `SELECT id, title,content_link AS contentLink,course_id   AS courseId FROM Module WHERE course_id = ?`, [courseId]);
 
     // 3) Return the result
     return res.json({ success: true, modules });
@@ -631,15 +539,7 @@ app.get('/student/quizzes', async (req, res) => {
   try {
     // 2) Fetch quizzes for that module
     const [quizzes] = await pool.query(
-      `SELECT
-         id,
-         title,
-         module_id       AS moduleId,
-         difficulty_level AS difficultyLevel
-       FROM Quiz
-       WHERE module_id = ?`,
-      [moduleId]
-    );
+      `SELECT id,title,module_id AS moduleId,difficulty_level AS difficultyLevel FROM Quiz WHERE module_id = ?`, [moduleId] );
 
     // 3) Return the result
     return res.json({ success: true, quizzes });
@@ -668,9 +568,7 @@ app.post('/student/attempt', async (req, res) => {
   try {
     // 2) Verify student exists and is a Student
     const [userRows] = await pool.query(
-      'SELECT role FROM `users` WHERE uid = ? LIMIT 1',
-      [studentId]
-    );
+      'SELECT role FROM `users` WHERE uid = ? LIMIT 1', [studentId]);
     if (userRows.length === 0 || userRows[0].role !== 'Student') {
       return res.status(400).json({
         success: false,
