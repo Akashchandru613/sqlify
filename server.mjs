@@ -207,7 +207,7 @@ app.post('/instructor/courses/:courseId/modules', async (req, res) => {
   
     // 3) Insert the new module
     const [result] = await pool.query(
-      `INSERT INTO Module (course_id, title, content_link) VALUES (${courseId}, ${title}, ${contentLink})`);
+      `INSERT INTO Module (course_id, title, content_link) VALUES (${courseId}, "${title}", "${contentLink}")`);
 
     // 4) Return the created module
     const newModule = {
@@ -355,7 +355,7 @@ app.post('/instructor/newquizzes', async (req, res) => {
     } else {
       // ——— CREATE FLOW ———
       const [quizResult] = await pool.query(
-        `INSERT INTO Quiz (title, difficulty_level, module_id)VALUES (${title}, ${difficultyLevel?difficultyLevel:1}, ${moduleId})`);
+        `INSERT INTO Quiz (title, difficulty_level, module_id)VALUES ("${title}", ${difficultyLevel?difficultyLevel:1}, ${moduleId})`);
 
       effectiveQuizId = quizResult.insertId;
     }
@@ -603,7 +603,7 @@ app.post('/student/attempt', async (req, res) => {
 
       // 3b) Insert into Attempt
       await pool.query(
-        `INSERT INTO Attempt (student_id, question_id, answer, correct) VALUES (${studentId}, ${questionId}, ${answer}, ${isCorrect})`);
+        `INSERT INTO Attempt (student_id, question_id, answer, correct) VALUES (${studentId}, ${questionId}, "${answer}", ${isCorrect})`);
     }
 
     // 4) Respond success
