@@ -117,7 +117,7 @@ const [result] = await pool.query(
 
 // Get all courses for an instructor
 app.get('/instructor/:instructorId/courses', async (req, res) => {
-  const { instructorId } = req.params;
+  const { instructorId } = req.params.instructorId;
 
   try {
     // Join Course with users to get instructor name
