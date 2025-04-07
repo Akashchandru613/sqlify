@@ -87,15 +87,14 @@ app.post('/signup', async (req, res) => {
   try {
     // Check if name OR email already exists
 // check for existing user
-const [existing] = await pool.query(
-  `
-    SELECT 1
-    FROM \`users\`
-    WHERE \`name\` = ? OR \`email\` = ?
-    LIMIT 1
-  `,
-  [name, email]
-);
+const qry =  `
+SELECT 1
+FROM \`users\`
+WHERE \`name\` = ? OR \`email\` = ?
+LIMIT 1
+`
+console.log("The queryy",qry);
+const [existing] = await pool.query(qry,[name, email]);
 if (existing.length) {
   return res
     .status(400)
@@ -740,7 +739,7 @@ app.put('/instructor/profile', async (req, res) => {
   try {
     // 2) Verify the user exists and is an Instructor
     const [userRows] = await pool.query(
-      'SELECT role FROM `User` WHERE uid = ? LIMIT 1',
+      'SELECT role FROM `users` WHERE uid = ? LIMIT 1',
       [instructorId]
     );
     if (userRows.length === 0 || userRows[0].role !== 'Instructor') {
