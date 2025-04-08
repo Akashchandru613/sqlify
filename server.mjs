@@ -37,7 +37,7 @@ const pool = new Sequelize(
 // Authentication Routes
 
 // Login route: verify username and password
-app.get('/login', async (req, res) => {
+app.post('/login', async (req, res) => {
   // Destructure the keys provided in your request body
   const { name, email, password } = req.body;
 
@@ -302,8 +302,8 @@ app.put('/instructor/modules/:moduleId', async (req, res) => {
 });
 
 // Get all quizzes for a module
-app.get('/instructor/quizzes', async (req, res) => {
-  const { moduleId } = req.query;
+app.post('/instructor/quizzes', async (req, res) => {
+  const { moduleId } = req.body;
   if (!moduleId) {
     return res.status(400).json({ success: false, message: 'Missing required query parameter: moduleId' });
   }
@@ -401,8 +401,8 @@ app.get('/instructor/students', async (req, res) => {
 });
 
 // Get all quiz attempts (progress) for a course
-app.get('/instructor/progress', async (req, res) => {
-  const { courseId } = req.query;
+app.post('/instructor/progress', async (req, res) => {
+  const { courseId } = req.body;
   if (!courseId) {
     return res.status(400).json({ success: false, message: 'Missing required query parameter: courseId' });
   }
@@ -514,8 +514,8 @@ app.post('/student/enroll', async (req, res) => {
 // GET /student/modules?courseId=123
 // Returns all modules for a given course (student view)
 
-app.get('/student/modules', async (req, res) => {
-  const { courseId } = req.query;
+app.post('/student/modules', async (req, res) => {
+  const { courseId } = req.body;
 
   // 1) Validate input
   if (!courseId) {
@@ -540,8 +540,8 @@ app.get('/student/modules', async (req, res) => {
 // GET /student/quizzes?moduleId=123
 // Returns all quizzes for a given module (student view)
 
-app.get('/student/quizzes', async (req, res) => {
-  const { moduleId } = req.query;
+app.post('/student/quizzes', async (req, res) => {
+  const { moduleId } = req.body;
 
   // 1) Validate input
   if (!moduleId) {
