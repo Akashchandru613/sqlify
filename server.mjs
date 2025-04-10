@@ -39,16 +39,13 @@ const pool = new Sequelize(
 // Login route: verify username and password
 app.post('/login', async (req, res) => {
   // Destructure the keys provided in your request body
-  const { name, email, password } = req.body;
+  const {email, password } = req.body;
 
   try {
     console.log("Request body:", req.body);
 
     // Check for a user with either matching name or email and matching password in the same row.
-    const users = await pool.query(
-      "SELECT * FROM users WHERE (name = ? OR email = ?) AND password = ?",
-      { replacements: [name, email, password], type: QueryTypes.SELECT }
-    );
+    const users = await pool.query(`SELECT * FROM users WHERE email = "${email}" AND password = "${password}"`);
     
     console.log(users, "UserDetails");
     
