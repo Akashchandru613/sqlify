@@ -56,6 +56,7 @@ app.post('/login', async (req, res) => {
     
     // If the user exists, return the user details
     const user = users[0];
+    console.log("user response",user)
     return res.json({ 
       success: true, 
       userId: user.uid, 
