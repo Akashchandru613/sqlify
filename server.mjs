@@ -41,38 +41,39 @@ const pool = new Sequelize(
 // Authentication Routes
 
 // Login route: verify username and password
-app.post('/login', async (req, res) => {
-  // Destructure the keys provided in your request body
-  const {email, password } = req.body;
+app.get('/login/:email/:password', async (req, res) => {
+  // Extract the email and password from the route parameters
+  const { email, password } = req.params;
 
   try {
-    console.log("Request body:", req.body);
+    console.log("Path params:", req.params);
 
-    // Check for a user with either matching name or email and matching password in the same row.
-    const users = await pool.query(`SELECT * FROM users WHERE email = "${email}" AND password = "${password}"`);
-    
+    // Use parameterized query to prevent SQL injection
+    const [users] = await pool.query(
+      `SELECT * FROM users WHERE email = "${email}" AND password = "${password}"`);
+
     console.log(users, "UserDetails");
-    
-    // If no user is found, return a message "No data found"
+
     if (users.length === 0) {
       return res.json({ success: false, message: "No data found" });
     }
-    
-    // If the user exists, return the user details
+
     const user = users[0];
-    console.log("user response",user)
-    return res.json({ 
-      success: true, 
-      userId: user.uid, 
-      role: user.role, 
-      userName: user.name 
+    console.log("user response", user);
+
+    return res.json({
+      success: true,
+      userName: user.name,
+      userId: user.uid,
+      role: user.role
     });
-    
+
   } catch (error) {
     console.error("Login error:", error);
     return res.status(500).json({ success: false, message: "Server error during login" });
   }
 });
+
 
 
 
