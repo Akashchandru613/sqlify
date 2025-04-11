@@ -277,7 +277,7 @@ app.post('/instructor/newquizzes', async (req, res) => {
       // ——— UPDATE FLOW ———
       // 3a) Update the quiz record
       await pool.query(
-        `UPDATE Quiz SET title = ${title}, difficulty_level = ${difficultyLevel?difficultyLevel:1}, module_id = ${moduleId} WHERE id = ${quizId}`);
+        `UPDATE Quiz SET title = "${title}", difficulty_level = ${difficultyLevel?difficultyLevel:1}, module_id = ${moduleId} WHERE id = ${quizId}`);
 
       // 3b) Remove old questions
       await pool.query(
