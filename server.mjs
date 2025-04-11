@@ -8,6 +8,8 @@ dotenv.config();
 import express from 'express';
 import { Sequelize, QueryTypes } from 'sequelize';
 import OpenAI from 'openai';
+import cors from 'cors';
+
 // import { use } from './src/routes/authRoutes';
 
 // Initialize the OpenAI client using the API key from the environment
@@ -15,10 +17,10 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-const cors = require('cors');
 // Initialize Express app
 const app = express();
 app.use(cors());
+
 app.use(express.json());  // for parsing JSON request bodies
 
 // Initialize Sequelize with SQLite database (update this config for MySQL if needed)
@@ -660,7 +662,7 @@ app.use((err, req, res, next) => {
 });
 
 // Start the server
-const PORT = process.env.PORT || 8000;
+const PORT = process.env.PORT || 8001;
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
 });
