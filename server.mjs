@@ -227,78 +227,6 @@ app.post('/instructor/courses/:courseId/modules', async (req, res) => {
 });
 
 
-
-// Update a module's details
-app.put('/instructor/modules/:moduleId', async (req, res) => {
-  const { moduleId } = req.params;
-  const { instructorId, title, contentLink, courseId: newCourseId } = req.body;
-
-  if (!instructorId) {
-    return res.status(400).json({ success: false, message: 'Missing instructorId' });
-  }
-
-  try {
-    // 1) Fetch the module
-    const [[moduleRow]] = await pool.query(
-      `SELECT * FROM Module WHERE id = ${moduleId}`);
-
-    if (!moduleRow) {
-      return res.status(404).json({ success: false, message: 'Module not found' });
-    }
-
-    const currentCourseId = moduleRow.course_id;
-
-    // 2) Verify instructor owns current course
-    const [[currentCourse]] = await pool.query(
-      `SELECT instructor_id FROM Course WHERE id = ${currentCourseId}`);
-
-    if (!currentCourse || currentCourse.instructor_id !== instructorId) {
-      return res.status(403).json({ success: false, message: 'Not authorized to update this module' });
-    }
-
-    // 3) If changing course, verify ownership of new course
-    if (newCourseId !== undefined && newCourseId !== currentCourseId) {
-      const [[newCourse]] = await pool.query(`SELECT instructor_id FROM Course WHERE id = ${newCourseId}`);
-
-      if (!newCourse || newCourse.instructor_id !== instructorId) {
-        return res.status(403).json({ success: false, message: 'Not authorized to assign module to this course' });
-      }
-    }
-
-    // 4) Build dynamic UPDATE
-    const fields = [];
-    const values = [];
-
-    if (title !== undefined) {
-      fields.push('title = ?');
-      values.push(title);
-    }
-    if (contentLink !== undefined) {
-      fields.push('content_link = ?');
-      values.push(contentLink);
-    }
-    if (newCourseId !== undefined) {
-      fields.push('course_id = ?');
-      values.push(newCourseId);
-    }
-
-    if (fields.length === 0) {
-      return res.status(400).json({ success: false, message: 'No fields to update' });
-    }
-
-    values.push(moduleId); // for WHERE clause
-
-    const sql = `UPDATE Module SET "${fields.join(', ')}" WHERE id = ?`;
-
-    await pool.query(sql, values);
-
-    return res.json({ success: true, message: 'Module updated' });
-  } catch (err) {
-    console.error('Update module error:', err);
-    return res.status(500).json({ success: false, message: 'Server error updating module' });
-  }
-});
-
 // Get all quizzes for a module
 app.post('/instructor/quizzes', async (req, res) => {
   const { moduleId } = req.body;
@@ -344,11 +272,11 @@ app.post('/instructor/newquizzes', async (req, res) => {
       // ——— UPDATE FLOW ———
       // 3a) Update the quiz record
       await pool.query(
-        `UPDATE QuizSET title = ${title}, difficulty_level = ${difficultyLevel?difficultyLevel:1}, module_id = ${moduleId} WHERE id = ${quizId}`);
+        `UPDATE Quiz SET title = ${title}, difficulty_level = ${difficultyLevel?difficultyLevel:1}, module_id = ${moduleId} WHERE id = ${quizId}`);
 
       // 3b) Remove old questions
       await pool.query(
-        `DELETE FROM Question WHERE quiz_id = ${quizId}`);
+        `DELETE FROM Question WHERE quizId = ${quizId}`);
 
     } else {
       // ——— CREATE FLOW ———
@@ -385,7 +313,7 @@ app.get('/instructor/students', async (req, res) => {
   try {
     // Fetch all students who have at least one enrollment
     const [students] = await pool.query(
-      `SELECT u.uid, u.name, u.email, u.role, u.institution, u.certification, u.yoe FROM users AS u JOIN Enrollment AS e ON u.uid = e.student_id WHERE u.role = 'Student' GROUP BY u.uid`);
+      `SELECT u.uid, u.name, u.email, u.role FROM users AS u JOIN Enrollment AS e ON u.uid = e.student_id WHERE u.role = 'Student' GROUP BY u.uid`);
 
 
     return res.json({ success: true, students });
@@ -593,7 +521,7 @@ app.post('/student/attempt', async (req, res) => {
 
       // 3a) Fetch the correct answer
       const [qRows] = await pool.query(
-        `SELECT correct_answer FROM Question WHERE id = ${questionId} LIMIT 1`);
+        `SELECT correctAnswer FROM Question WHERE id = ${questionId} LIMIT 1`);
 
       if (qRows.length === 0) continue; // skip nonexistent questions
 
