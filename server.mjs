@@ -15,8 +15,10 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
+const cors = require('cors');
 // Initialize Express app
 const app = express();
+app.use(cors());
 app.use(express.json());  // for parsing JSON request bodies
 
 // Initialize Sequelize with SQLite database (update this config for MySQL if needed)
