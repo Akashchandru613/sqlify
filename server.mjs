@@ -270,7 +270,7 @@ app.post('/instructor/newquizzes', async (req, res) => {
     if (!moduleRow || moduleRow.instructor_id !== instructorId) {
       return res.status(403).json({ success: false, message: 'Not authorized' });
     }
-
+    console.log("bkjdhbfwj",req.body)
     let effectiveQuizId = quizId;
 
     if (quizId) {
@@ -292,14 +292,21 @@ app.post('/instructor/newquizzes', async (req, res) => {
     }
 
     // 4) Insert questions for this quiz
-    const insertQ = `INSERT INTO Question (quiz_id, text, correct_answer) VALUES ?`;
+    const insertQ = `INSERT INTO Question (quizId, text, correct_answer) VALUES `;
+
+    // Filter and map the questions to formatted SQL value strings
     const questionValues = questions
       .filter(q => q.text && q.correctAnswer)
-      .map(q => [effectiveQuizId, q.text, q.correctAnswer]);
-
+      .map(q =>
+        `(${pool.escape(effectiveQuizId)}, ${pool.escape(q.text)}, ${pool.escape(q.correctAnswer)})`
+      );
+    
+    // If there are valid question values, build and run the query
     if (questionValues.length) {
-      await pool.query(insertQ, [questionValues]);
+      const fullQuery = insertQ + questionValues.join(', ');
+      await pool.query(fullQuery);
     }
+    
 
     return res.json({
       success: true,
