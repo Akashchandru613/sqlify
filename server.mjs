@@ -793,8 +793,11 @@ app.post('/chat', async (req, res) => {
       ]
     });
     
-    const sqlQuery = completion.choices[0].message.content.trim();
+    let sqlQuery = completion.choices[0].message.content.trim();
     console.log('Generated SQL query:', sqlQuery);
+
+    // Remove markdown formatting if present (like ```sql and ```)
+    sqlQuery = sqlQuery.replace(/^```sql\s*/i, '').replace(/\s*```$/, '');
     
     try {
       // Execute the query
@@ -831,6 +834,7 @@ app.post('/chat', async (req, res) => {
     });
   }
 });
+
 
 
 
