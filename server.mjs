@@ -43,29 +43,31 @@ const pool = new Sequelize(
 
 
 // Login route: verify username and password
-
-app.post('/login', async (req, res) => {
-  const { name, email, password } = req.body;
+app.get('/login/:email/:password', async (req, res) => {
+  // Extract the email and password from the route parameters
+  const { email, password } = req.params;
 
   try {
-    const identifier = name || email;
+    console.log("Path params:", req.params);
 
-    const users = await pool.query(
-      "SELECT * FROM users WHERE (name = ? OR email = ?) AND password = ?",
-      { replacements: [identifier, identifier,password], type: QueryTypes.SELECT }
-    );
+    // Use parameterized query to prevent SQL injection
+    const [users] = await pool.query(
+      `SELECT * FROM users WHERE email = "${email}" AND password = "${password}"`);
+
+    console.log(users, "UserDetails");
 
     if (users.length === 0) {
       return res.json({ success: false, message: "No data found" });
     }
 
     const user = users[0];
+    console.log("user response", user);
 
-    return res.json({ 
-      success: true, 
-      userId: user.uid, 
-      role: user.role, 
-      userName: user.name 
+    return res.json({
+      success: true,
+      userName: user.name,
+      userId: user.uid,
+      role: user.role
     });
 
   } catch (error) {
@@ -73,7 +75,6 @@ app.post('/login', async (req, res) => {
     return res.status(500).json({ success: false, message: "Server error during login" });
   }
 });
-
 
 
 
@@ -115,6 +116,7 @@ const [result] = await pool.query(
     return res.status(500).json({ success: false, message: 'Server error during signup' });
   }
 });
+
 
 // Instructor Routes
 
