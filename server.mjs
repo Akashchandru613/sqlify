@@ -2,14 +2,18 @@
 
 // Load environment variables from .env file
 import dotenv from 'dotenv';
-dotenv.config();
+import cors from 'cors';
+
+
 
 // Import required packages
 import express from 'express';
 import { Sequelize, QueryTypes } from 'sequelize';
 import OpenAI from 'openai';
-import cors from 'cors';
-
+dotenv.config();
+const app = express();
+app.use(cors());
+app.use(express.json());
 // import { use } from './src/routes/authRoutes';
 
 // Initialize the OpenAI client using the API key from the environment
@@ -17,11 +21,7 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-// Initialize Express app
-const app = express();
-app.use(cors());
 
-app.use(express.json());  // for parsing JSON request bodies
 
 // Initialize Sequelize with SQLite database (update this config for MySQL if needed)
 const pool = new Sequelize(
@@ -40,32 +40,32 @@ const pool = new Sequelize(
 
 // Authentication Routes
 
+
+
 // Login route: verify username and password
-app.get('/login/:email/:password', async (req, res) => {
-  // Extract the email and password from the route parameters
-  const { email, password } = req.params;
+
+app.post('/login', async (req, res) => {
+  const { name, email, password } = req.body;
 
   try {
-    console.log("Path params:", req.params);
+    const identifier = name || email;
 
-    // Use parameterized query to prevent SQL injection
-    const [users] = await pool.query(
-      `SELECT * FROM users WHERE email = "${email}" AND password = "${password}"`);
-
-    console.log(users, "UserDetails");
+    const users = await pool.query(
+      "SELECT * FROM users WHERE (name = ? OR email = ?) AND password = ?",
+      { replacements: [identifier, identifier,password], type: QueryTypes.SELECT }
+    );
 
     if (users.length === 0) {
       return res.json({ success: false, message: "No data found" });
     }
 
     const user = users[0];
-    console.log("user response", user);
 
-    return res.json({
-      success: true,
-      userName: user.name,
-      userId: user.uid,
-      role: user.role
+    return res.json({ 
+      success: true, 
+      userId: user.uid, 
+      role: user.role, 
+      userName: user.name 
     });
 
   } catch (error) {
@@ -160,6 +160,7 @@ app.post('/instructor/courses', async (req, res) => {
     }
 
     // 3) Insert new course
+    console.log(name,description,instructorId)
     const [result] = await pool.query(
       `INSERT INTO Course (name, description, instructor_id) VALUES ("${name}", "${description?description:''}", "${instructorId}")`);
 
@@ -182,7 +183,8 @@ app.post('/instructor/modules', async (req, res) => {
   console.log("Requestttt",req)
   const { courseId } = req.body;
   try {
-    const modules = await pool.query(`select * from Module m inner join Course c on c.id = m.course_id where m.course_id = ${courseId}`);
+    const modules = await pool.query(`select m.id,m.title,m.content_link from Module m inner join Course c on c.id = m.course_id where m.course_id = ${courseId}`);
+    console.log(modules)
     return res.json(modules);
   } catch (error) {
     console.error("Fetch modules error:", error);
@@ -214,7 +216,7 @@ app.post('/instructor/courses/:courseId/modules', async (req, res) => {
 
     // 4) Return the created module
     const newModule = {
-      id: result.insertId,
+      id: result.id,
       title,
       contentLink
     };
@@ -232,70 +234,129 @@ app.post('/instructor/courses/:courseId/modules', async (req, res) => {
 });
 
 
-// Get all quizzes for a module
-app.post('/instructor/quizzes', async (req, res) => {
-  const { moduleId } = req.body;
-  if (!moduleId) {
-    return res.status(400).json({ success: false, message: 'Missing required query parameter: moduleId' });
+
+// Update a module's details
+app.put('/instructor/modules/:moduleId', async (req, res) => {
+  const { moduleId } = req.params;
+  const { instructorId, title, contentLink, courseId: newCourseId } = req.body;
+
+  if (!instructorId) {
+    return res.status(400).json({ success: false, message: 'Missing instructorId' });
   }
 
   try {
-    const [quizzes] = await pool.query(
-      `SELECT id, title, module_id AS moduleId, difficulty_level AS difficultyLevel FROM Quiz WHERE module_id = ${moduleId}`);
+    // 1) Fetch the module
+    const [[moduleRow]] = await pool.query(
+      `SELECT * FROM Module WHERE id = ${moduleId}`);
 
-    return res.json({ success: true, quizzes });
+    if (!moduleRow) {
+      return res.status(404).json({ success: false, message: 'Module not found' });
+    }
+
+    const currentCourseId = moduleRow.course_id;
+
+    // 2) Verify instructor owns current course
+    const [[currentCourse]] = await pool.query(
+      `SELECT instructor_id FROM Course WHERE id = ${currentCourseId}`);
+
+    if (!currentCourse || currentCourse.instructor_id !== instructorId) {
+      return res.status(403).json({ success: false, message: 'Not authorized to update this module' });
+    }
+
+    // 3) If changing course, verify ownership of new course
+    if (newCourseId !== undefined && newCourseId !== currentCourseId) {
+      const [[newCourse]] = await pool.query(`SELECT instructor_id FROM Course WHERE id = ${newCourseId}`);
+
+      if (!newCourse || newCourse.instructor_id !== instructorId) {
+        return res.status(403).json({ success: false, message: 'Not authorized to assign module to this course' });
+      }
+    }
+
+    // 4) Build dynamic UPDATE
+    const fields = [];
+    const values = [];
+
+    if (title !== undefined) {
+      fields.push('title = ?');
+      values.push(title);
+    }
+    if (contentLink !== undefined) {
+      fields.push('content_link = ?');
+      values.push(contentLink);
+    }
+    if (newCourseId !== undefined) {
+      fields.push('course_id = ?');
+      values.push(newCourseId);
+    }
+
+    if (fields.length === 0) {
+      return res.status(400).json({ success: false, message: 'No fields to update' });
+    }
+
+    values.push(moduleId); // for WHERE clause
+
+    const sql = `UPDATE Module SET "${fields.join(', ')}" WHERE id = ?`;
+
+    await pool.query(sql, values);
+
+    return res.json({ success: true, message: 'Module updated' });
   } catch (err) {
-    console.error('Fetch quizzes error:', err);
-    return res.status(500).json({ success: false, message: 'Failed to retrieve quizzes' });
+    console.error('Update module error:', err);
+    return res.status(500).json({ success: false, message: 'Server error updating module' });
   }
 });
 
-// Create a new quiz (with questions) under a module
+
 app.post('/instructor/newquizzes', async (req, res) => {
-  const { instructorId, moduleId, title, difficultyLevel, questions } = req.body;
+  console.log('hitting this route valid')
+  const { instructorId, moduleId, title, difficultyLevel, questions, quizId } = req.body;
 
   // 1) Validate input
-  if (!instructorId || !moduleId || !title || !questions || !Array.isArray(questions)) {
+  
+  if (!instructorId || !moduleId || !title || !questions ) {
     return res.status(400).json({
       success: false,
-      message: 'Required: instructorId, moduleId, title, questions[]'
+      message: 'Required: instructorId, moduleId, title, questions[]'+instructorId + moduleId + title + questions
     });
   }
 
   try {
     // 2) Verify instructor owns the course for this module
+    console.log('verifying')
     const [[moduleRow]] = await pool.query(
       `SELECT c.instructor_id FROM Module m JOIN Course c ON m.course_id = c.id WHERE m.id = ${moduleId}`);
 
     if (!moduleRow || moduleRow.instructor_id !== instructorId) {
       return res.status(403).json({ success: false, message: 'Not authorized' });
     }
-    console.log("bkjdhbfwj",req.body)
-   
+
+    let effectiveQuizId = quizId;
+// console.log('if quiz id')
+//     if (quizId) {
+//       // ——— UPDATE FLOW ———
+//       // 3a) Update the quiz record
+//       console.log('update')
+//       await pool.query(
+//         `UPDATE QuizSET title = ${title}, difficulty_level = ${difficultyLevel?difficultyLevel:1}, module_id = ${moduleId} WHERE id = ${quizId}`);
+//         console.log('remove')
+//       // 3b) Remove old questions
+//       await pool.query(
+//         `DELETE FROM Question WHERE quiz_id = ${quizId}`);
+
+//     } else {
       // ——— CREATE FLOW ———
+      console.log('else')
       const [quizResult] = await pool.query(
         `INSERT INTO Quiz (title, difficulty_level, module_id)VALUES ("${title}", ${difficultyLevel?difficultyLevel:1}, ${moduleId})`);
-
-      effectiveQuizId = quizResult.id;
-      console.log("quiz result",quizResult)
+      effectiveQuizId = quizResult;
+    // }
 
     // 4) Insert questions for this quiz
-    const insertQ = `INSERT INTO Question (quizId, text, correctAnswer) VALUES `;
-
-    // Filter and map the questions to formatted SQL value strings
-    const questionValues = questions
-      .filter(q => q.text && q.correctAnswer)
-      .map(q =>
-        `(${pool.escape(effectiveQuizId)}, ${pool.escape(q.text)}, ${pool.escape(q.correctAnswer)})`
-      );
+  
+      for (let i = 0; i < questions.length;i++){
+        const response = await pool.query(`INSERT INTO Question (id, quizId, text,difficulty, correctAnswer) VALUES ("${10*effectiveQuizId + i}","${effectiveQuizId}","${questions[i].text}",${difficultyLevel},"${questions[i].correctAnswer}")`);
+      }
     
-    // If there are valid question values, build and run the query
-    if (questionValues.length) {
-      const fullQuery = insertQ + questionValues.join(', ');
-      await pool.query(fullQuery);
-    }
-    
-
     return res.json({
       success: true,
       quizId: effectiveQuizId,
@@ -313,7 +374,7 @@ app.get('/instructor/students', async (req, res) => {
   try {
     // Fetch all students who have at least one enrollment
     const [students] = await pool.query(
-      `SELECT u.uid, u.name, u.email, u.role FROM users AS u JOIN Enrollment AS e ON u.uid = e.student_id WHERE u.role = 'Student' GROUP BY u.uid`);
+      `SELECT u.uid, u.name, u.email, u.role, u.institution, u.certification, u.yoe FROM users AS u JOIN Enrollment AS e ON u.uid = e.student_id WHERE u.role = 'Student' GROUP BY u.uid`);
 
 
     return res.json({ success: true, students });
@@ -435,32 +496,123 @@ app.post('/student/enroll', async (req, res) => {
   }
 });
 
+// acquire all the course enrolled by a student
+
+app.post('/student/enrolled', async (req, res) => {
+  
+  console.log("REQ BODY >>>", req.body); 
+  const { studentId } = req.body;
+
+
+  if (!studentId) {
+    return res.status(400).json({ success: false, message: 'Missing studentId' });
+  }
+
+  try {
+    const courses = await pool.query(`
+      SELECT c.id, c.name, c.description
+      FROM Course c
+      JOIN Enrollment e ON c.id = e.course_id
+      WHERE e.student_id = ?
+    `, {
+      replacements: [studentId],
+      type: QueryTypes.SELECT
+    });
+    console.log("Database query result:", courses);
+    
+
+    return res.json({ 
+      success: true, 
+      courses });
+  } catch (err) {
+    console.error('Fetch enrolled courses error:', err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+
 
 // Get all modules of a course (student view)
 // GET /student/modules?courseId=123
 // Returns all modules for a given course (student view)
-
-app.post('/student/modules', async (req, res) => {
+app.post('/instructor/modules', async (req, res) => {
+  console.log("Requestttt",req)
   const { courseId } = req.body;
-
-  // 1) Validate input
-  if (!courseId) {
-    return res.status(400).json({ success: false, message: 'Missing required query parameter: courseId' });
-  }
-
   try {
-    // 2) Fetch modules for that course
-    const [modules] = await pool.query(
-      `SELECT id, title,content_link AS contentLink,course_id   AS courseId FROM Module WHERE course_id = ${courseId}`);
-
-    // 3) Return the result
-    return res.json({ success: true, modules });
-  } catch (err) {
-    console.error('Fetch modules error (student):', err);
-    return res.status(500).json({ success: false, message: 'Failed to retrieve modules' });
+    const modules = await pool.query(`select m.id,m.title,m.content_link from Module m inner join Course c on c.id = m.course_id where m.course_id = ${courseId}`);
+    console.log("Moduless",modules)
+    return res.json(modules);
+  } catch (error) {
+    console.error("Fetch modules error:", error);
+    return res.status(500).json({ success: false, message: "Failed to retrieve modules" });
   }
 });
 
+
+
+app.post('/student/quizzes', async (req, res) => {
+  const { moduleId } = req.body;
+
+  try {
+    // 
+    if (moduleId === "all" || moduleId === "any") {
+      const [quizzes] = await pool.query(
+        `SELECT id, title, module_id AS moduleId, difficulty_level AS difficultyLevel FROM Quiz`);
+      return res.json({ success: true, quizzes });
+    }
+    
+    
+    if (!moduleId || isNaN(parseInt(moduleId))) {
+      return res.status(400).json({ success: false, message: 'Invalid moduleId' });
+    }
+
+    
+    const [quizzes] = await pool.query(
+      `SELECT id, title, module_id AS moduleId, difficulty_level AS difficultyLevel FROM Quiz WHERE module_id = ${moduleId}`, 
+    );
+
+    return res.json({ success: true, quizzes });
+  } catch (err) {
+    console.error('Fetch quizzes error (student):', err);
+    return res.status(500).json({ success: false, message: 'Failed to retrieve quizzes' });
+  }
+});
+
+// Get all quizzes for a module
+app.post('/instructor/quizzes', async (req, res) => {
+  const { moduleId } = req.body;
+  if (!moduleId) {
+    return res.status(400).json({ success: false, message: 'Missing required query parameter: moduleId' });
+  }
+
+  try {
+    const [quizzes] = await pool.query(
+      `SELECT id, title, module_id AS moduleId, difficulty_level AS difficultyLevel FROM Quiz WHERE module_id = ${moduleId}`);
+console.log(quizzes)
+    return res.json({ success: true, quizzes });
+  } catch (err) {
+    console.error('Fetch quizzes error:', err);
+    return res.status(500).json({ success: false, message: 'Failed to retrieve quizzes' });
+  }
+});
+
+app.post('/instructor/quiz-questions', async (req, res) => {
+  const { quizId } = req.body;
+  if (!quizId) {
+    return res.status(400).json({ success: false, message: '缺少必要的参数: quizId' });
+  }
+
+  try {
+    
+    const [questions] = await pool.query(
+      `SELECT id, quizId AS quizId, text, correctAnswer AS correctAnswer FROM Question WHERE quizId = ${quizId}`);
+
+    return res.json({ success: true, questions });
+  } catch (err) {
+    console.error('error:', err);
+    return res.status(500).json({ success: false, message: 'dail to get the message' });
+  }
+});
 
 // Get all quizzes of a module (student view)
 // GET /student/quizzes?moduleId=123
@@ -529,7 +681,7 @@ app.post('/student/attempt', async (req, res) => {
 
       // 3b) Insert into Attempt
       await pool.query(
-        `INSERT INTO Attempt (student_id, question_id, answer, correct) VALUES (${studentId}, ${questionId}, "${answer}", ${isCorrect})`);
+        `INSERT INTO Attempt (userId, questionId, answer, correct) VALUES (${studentId}, ${questionId}, "${answer}", ${isCorrect})`);
     }
 
     // 4) Respond success
@@ -608,51 +760,79 @@ app.put('/instructor/profile', async (req, res) => {
 app.post('/chat', async (req, res) => {
   const { question } = req.body;
 
-  // 1) Validate input
+  // Validate input
   if (!question) {
     return res.status(400).json({ success: false, message: 'Question text is required' });
   }
 
   try {
-    // 2) Ask OpenAI to generate a bare SQL query
+    // Provide OpenAI with the correct table structure
     const completion = await openai.chat.completions.create({
       model: 'gpt-3.5-turbo',
       messages: [
-        { role: 'system', content: 'You are a helpful assistant that only outputs SQL queries without explanation.' },
-        { role: 'user', content: `Note these points. I am providing the tables names below please use those table names and columns to generate 
-          the SQL Query as per the users prompt. 
-          Table name : 
-
-
-          Convert this question into an SQL query:\n"${question}"` }
+        { 
+          role: 'system', 
+          content: `You are a SQL query assistant. 
+          
+          The database has the following tables:
+          - Attempt
+          - Course
+          - Enrollment
+          - Instructor
+          - Message
+          - Module
+          - Question (with columns: id, quizId, text, correctAnswer, difficulty)
+          - Quiz
+          - Student
+          - StudentProgress
+          - Submission
+          - users
+          
+          Please generate SQL queries using only these exact table names.`
+        },
+        { role: 'user', content: `Convert this question into an SQL query:\n"${question}"` }
       ]
     });
+    
     const sqlQuery = completion.choices[0].message.content.trim();
     console.log('Generated SQL query:', sqlQuery);
-
-    // 3) Execute the query on MySQL
-    let queryResult;
-    if (sqlQuery.toLowerCase().startsWith('select')) {
-      // SELECT → return rows
-      const [rows] = await pool.query(sqlQuery);
-      queryResult = rows;
-    } else {
-      // Non-SELECT → return affectedRows info
-      const [info] = await pool.query(sqlQuery);
-      queryResult = { affectedRows: info.affectedRows, insertId: info.insertId };
+    
+    try {
+      // Execute the query
+      let queryResult;
+      if (sqlQuery.toLowerCase().startsWith('select')) {
+        const [rows] = await pool.query(sqlQuery);
+        queryResult = rows;
+      } else {
+        const [info] = await pool.query(sqlQuery);
+        queryResult = { affectedRows: info.affectedRows, insertId: info.insertId };
+      }
+      
+      return res.json({
+        success: true,
+        query: sqlQuery,
+        result: queryResult
+      });
+    } catch (dbError) {
+      console.error('Database query error:', dbError);
+      
+      return res.json({
+        success: true,
+        query: sqlQuery,
+        result: null,
+        message: "Query generated but execution failed: " + dbError.message
+      });
     }
-
-    // 4) Return the SQL and its result
-    return res.json({
-      success: true,
-      query: sqlQuery,
-      result: queryResult
-    });
   } catch (err) {
     console.error('Chat error:', err);
-    return res.status(500).json({ success: false, message: 'Failed to process query', error: err.message });
+    return res.status(500).json({ 
+      success: false, 
+      message: 'Failed to process query', 
+      error: err.message 
+    });
   }
 });
+
 
 
 // Global error handling middleware
@@ -663,7 +843,7 @@ app.use((err, req, res, next) => {
 });
 
 // Start the server
-const PORT = process.env.PORT || 8001;
+const PORT = process.env.PORT || 8000;
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
 });
