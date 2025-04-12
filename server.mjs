@@ -271,15 +271,13 @@ app.post('/instructor/newquizzes', async (req, res) => {
       return res.status(403).json({ success: false, message: 'Not authorized' });
     }
     console.log("bkjdhbfwj",req.body)
-    let effectiveQuizId = quizId;
-
    
       // ——— CREATE FLOW ———
       const [quizResult] = await pool.query(
         `INSERT INTO Quiz (title, difficulty_level, module_id)VALUES ("${title}", ${difficultyLevel?difficultyLevel:1}, ${moduleId})`);
 
-      effectiveQuizId = quizResult.insertId;
-    
+      effectiveQuizId = quizResult.id;
+    console.log("quiz result",quizResult)
 
     // 4) Insert questions for this quiz
     const insertQ = `INSERT INTO Question (quizId, text, correctAnswer) VALUES `;
