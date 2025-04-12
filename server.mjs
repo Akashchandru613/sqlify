@@ -292,7 +292,7 @@ app.post('/instructor/newquizzes', async (req, res) => {
     }
 
     // 4) Insert questions for this quiz
-    const insertQ = `INSERT INTO Question (quizId, text, correct_answer) VALUES `;
+    const insertQ = `INSERT INTO Question (quizId, text, correctAnswer) VALUES `;
 
     // Filter and map the questions to formatted SQL value strings
     const questionValues = questions
