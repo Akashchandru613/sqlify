@@ -777,20 +777,17 @@ app.post('/chat', async (req, res) => {
           content: `You are a SQL query assistant. 
           
           The database has the following tables:
-          - Attempt
-          - Course
-          - Enrollment
-          - Instructor
-          - Message
-          - Module
+          - Attempt (with columns : id, userId, questionId, answer, correct)
+          - Course (with columns : id, name, description, instructor_id)
+          - Enrollment (with columns : student_id, course_id, enrollment_date, status)
+          - Message (with columns : id, sender_id, receiver_id, content, is_read, priority)
+          - Module (with columns : id, title, content_link, course_id)
           - Question (with columns: id, quizId, text, correctAnswer, difficulty)
-          - Quiz
-          - Student
-          - StudentProgress
-          - Submission
-          - users
+          - Quiz (with columns : id, title, module_id, difficulty_level)
+          - users (with columns : uid, name, email, password, role)
           
-          Please generate SQL queries using only these exact table names.`
+          Please generate SQL queries using only these exact table names. Also, for the information about Students and Instructors,
+          fetch the data from the users table using the column named "role" which should be either 'Instructor' or 'Student'`
         },
         { role: 'user', content: `Convert this question into an SQL query:\n"${question}"` }
       ]
