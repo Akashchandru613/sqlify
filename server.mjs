@@ -273,23 +273,13 @@ app.post('/instructor/newquizzes', async (req, res) => {
     console.log("bkjdhbfwj",req.body)
     let effectiveQuizId = quizId;
 
-    if (quizId) {
-      // ——— UPDATE FLOW ———
-      // 3a) Update the quiz record
-      await pool.query(
-        `UPDATE Quiz SET title = "${title}", difficulty_level = ${difficultyLevel?difficultyLevel:1}, module_id = ${moduleId} WHERE id = ${quizId}`);
-
-      // 3b) Remove old questions
-      await pool.query(
-        `DELETE FROM Question WHERE quizId = ${quizId}`);
-
-    } else {
+   
       // ——— CREATE FLOW ———
       const [quizResult] = await pool.query(
         `INSERT INTO Quiz (title, difficulty_level, module_id)VALUES ("${title}", ${difficultyLevel?difficultyLevel:1}, ${moduleId})`);
 
       effectiveQuizId = quizResult.insertId;
-    }
+    
 
     // 4) Insert questions for this quiz
     const insertQ = `INSERT INTO Question (quizId, text, correctAnswer) VALUES `;
@@ -631,7 +621,12 @@ app.post('/chat', async (req, res) => {
       model: 'gpt-3.5-turbo',
       messages: [
         { role: 'system', content: 'You are a helpful assistant that only outputs SQL queries without explanation.' },
-        { role: 'user', content: `Convert this question into an SQL query:\n"${question}"` }
+        { role: 'user', content: `Note these points. I am providing the tables names below please use those table names and columns to generate 
+          the SQL Query as per the users prompt. 
+          Table name : 
+
+
+          Convert this question into an SQL query:\n"${question}"` }
       ]
     });
     const sqlQuery = completion.choices[0].message.content.trim();
