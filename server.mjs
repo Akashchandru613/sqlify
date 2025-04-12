@@ -277,7 +277,7 @@ app.post('/instructor/newquizzes', async (req, res) => {
         `INSERT INTO Quiz (title, difficulty_level, module_id)VALUES ("${title}", ${difficultyLevel?difficultyLevel:1}, ${moduleId})`);
 
       effectiveQuizId = quizResult.id;
-    console.log("quiz result",quizResult)
+      console.log("quiz result",quizResult)
 
     // 4) Insert questions for this quiz
     const insertQ = `INSERT INTO Question (quizId, text, correctAnswer) VALUES `;
