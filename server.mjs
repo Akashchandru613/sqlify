@@ -252,7 +252,7 @@ app.post('/instructor/quizzes', async (req, res) => {
 
 // Create a new quiz (with questions) under a module
 app.post('/instructor/newquizzes', async (req, res) => {
-  const { instructorId, moduleId, title, difficultyLevel, questions, quizId } = req.body;
+  const { instructorId, moduleId, title, difficultyLevel, questions } = req.body;
 
   // 1) Validate input
   if (!instructorId || !moduleId || !title || !questions || !Array.isArray(questions)) {
