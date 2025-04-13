@@ -787,7 +787,7 @@ app.post('/chat', async (req, res) => {
           - users (with columns : uid, name, email, password, role)
           
           Please generate SQL queries using only these exact table names. Also, for the information about Students and Instructors,
-          fetch the data from the users table using the column named "role" which should be either 'Instructor' or 'Student'`
+          fetch the data from the users table using the column named "role" which should be either 'Instructor' or 'Student'. Also generate only the query no statements of intro before and after the query. Generate only the query`
         },
         { role: 'user', content: `Convert this question into an SQL query:\n"${question}"` }
       ]
